@@ -28,6 +28,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.testng.annotations.Test;
 
+import com.netflix.evcache.config.Archaius1PropertyRepo;
+import com.netflix.evcache.config.PropertyRepoCacheConfig;
+
 /**
  * @author Scott Mansfield
  */
@@ -41,7 +44,7 @@ public class EVCacheClientPoolTest {
         EVCacheNodeList evCacheNodeList = mock(EVCacheNodeList.class);
         EVCacheClientPoolManager evCacheClientPoolManager = mock(EVCacheClientPoolManager.class);
         
-        EVCacheClientPool evCacheClientPool = new EVCacheClientPool("in a unit test", evCacheNodeList, (ThreadPoolExecutor)Executors.newFixedThreadPool(1), evCacheClientPoolManager);
+        EVCacheClientPool evCacheClientPool = new EVCacheClientPool(new PropertyRepoCacheConfig(new Archaius1PropertyRepo()), "in a unit test", evCacheNodeList, (ThreadPoolExecutor)Executors.newFixedThreadPool(1), evCacheClientPoolManager);
         FieldUtils.writeField(evCacheClientPool, "numberOfModOps", new AtomicLong(0xFFFF_FFFF_FFFF_FFFFL), true);
 
         // Set up the method arguments

@@ -3,12 +3,12 @@ package com.netflix.evcache.pool;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.util.List;
+import java.util.function.Supplier;
 
 import com.netflix.appinfo.InstanceInfo;
-import com.netflix.config.ChainedDynamicProperty;
 import com.netflix.discovery.DiscoveryClient;
 import com.netflix.discovery.shared.Application;
-import com.netflix.evcache.util.EVCacheConfig;
+import com.netflix.evcache.config.CacheConfig.ClusterConfig;
 
 import net.spy.memcached.MemcachedNode;
 import net.spy.memcached.util.DefaultKetamaNodeLocatorConfiguration;
@@ -19,13 +19,13 @@ public class EVCacheKetamaNodeLocatorConfiguration extends DefaultKetamaNodeLoca
     private final ServerGroup serverGroup;
     private final EVCacheClientPoolManager poolManager;
 
-    private final ChainedDynamicProperty.IntProperty bucketSize;
+    private final Supplier<Integer> bucketSize;
 
-    public EVCacheKetamaNodeLocatorConfiguration(String appId, ServerGroup serverGroup, EVCacheClientPoolManager poolManager) {
+    public EVCacheKetamaNodeLocatorConfiguration(ClusterConfig clusterConfig, String appId, ServerGroup serverGroup, EVCacheClientPoolManager poolManager) {
         this.appId = appId;
         this.serverGroup = serverGroup;
         this.poolManager = poolManager;
-        bucketSize = EVCacheConfig.getInstance().getChainedIntProperty(appId + "." + serverGroup.getName() + ".bucket.size",appId + ".bucket.size", super.getNodeRepetitions(), null);
+        this.bucketSize = clusterConfig.getBucketSize(serverGroup.getName(), super.getNodeRepetitions());
     }
 
     /**

@@ -10,6 +10,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
+import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,10 +23,9 @@ import com.google.common.cache.LoadingCache;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListenableFutureTask;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.netflix.config.ChainedDynamicProperty;
-import com.netflix.config.DynamicIntProperty;
+import com.netflix.evcache.config.CacheConfig;
+import com.netflix.evcache.config.CacheConfig.ClusterConfig.InMemoryCacheConfig;
 import com.netflix.evcache.metrics.EVCacheMetricsFactory;
-import com.netflix.evcache.util.EVCacheConfig;
 import com.netflix.servo.DefaultMonitorRegistry;
 import com.netflix.servo.MonitorRegistry;
 import com.netflix.servo.annotations.DataSourceType;
@@ -46,10 +46,11 @@ import net.spy.memcached.transcoders.Transcoder;
 public class EVCacheInMemoryCache<T> {
 
     private static final Logger log = LoggerFactory.getLogger(EVCacheInMemoryCache.class);
-    private final ChainedDynamicProperty.IntProperty _cacheDuration; // The key will be cached for this long
-    private final DynamicIntProperty _refreshDuration, _exireAfterAccessDuration;
-    private final DynamicIntProperty _cacheSize; // This many items will be cached
-    private final DynamicIntProperty _poolSize; // This many threads will be initialized to fetch data from evcache async
+    private final EVCacheMetricsFactory cacheMetricsFactory;
+    private final Supplier<Integer> _cacheDuration; // The key will be cached for this long
+    private final Supplier<Integer> _refreshDuration, _exireAfterAccessDuration;
+    private final Supplier<Integer> _cacheSize; // This many items will be cached
+    private final Supplier<Integer> _poolSize; // This many threads will be initialized to fetch data from evcache async
     private final String appName;
 
     private LoadingCache<String, T> cache;
@@ -58,34 +59,28 @@ public class EVCacheInMemoryCache<T> {
     private final Transcoder<T> tc;
     private final EVCacheImpl impl;
 
-    public EVCacheInMemoryCache(String appName, Transcoder<T> tc, EVCacheImpl impl) {
+    public EVCacheInMemoryCache(String appName, EVCacheMetricsFactory cacheMetricsFactory, Transcoder<T> tc, EVCacheImpl impl) {
         this.appName = appName;
+        this.cacheMetricsFactory = cacheMetricsFactory;
         this.tc = tc;
         this.impl = impl;
+        
+        CacheConfig cacheConfig = impl.getCacheConfig();
+		InMemoryCacheConfig imcConfig = cacheConfig.getClusterConfig(appName).getInMemoryCacheConfig();
+        
+        this._cacheDuration = imcConfig.getCacheDuration();
 
-        final Runnable setupCache = new Runnable() {
-            public void run() {
-                setupCache();
-            }
-        };
+        this._exireAfterAccessDuration = imcConfig.getExpireAfterAccessDuration();
+        cacheConfig.addCallback(this._exireAfterAccessDuration, this::setupCache);
 
-        this._cacheDuration = EVCacheConfig.getInstance().getChainedIntProperty(appName + ".inmemory.cache.duration.ms", appName + ".inmemory.expire.after.write.duration.ms", 0, setupCache);
+        this._refreshDuration = imcConfig.getRefreshDuration();
+        cacheConfig.addCallback(this._refreshDuration, this::setupCache);
 
-        this._exireAfterAccessDuration = EVCacheConfig.getInstance().getDynamicIntProperty(appName + ".inmemory.expire.after.access.duration.ms", 0);
-        this._exireAfterAccessDuration.addCallback(setupCache);
+        this._cacheSize = imcConfig.getCacheSize();
+        cacheConfig.addCallback(this._cacheSize, this::setupCache);
 
-        this._refreshDuration = EVCacheConfig.getInstance().getDynamicIntProperty(appName + ".inmemory.refresh.after.write.duration.ms", 0);
-        this._refreshDuration.addCallback(setupCache);
-
-        this._cacheSize = EVCacheConfig.getInstance().getDynamicIntProperty(appName + ".inmemory.cache.size", 100);
-        this._cacheSize.addCallback(setupCache);
-
-        this._poolSize = EVCacheConfig.getInstance().getDynamicIntProperty(appName + ".thread.pool.size", 5);
-        this._poolSize.addCallback(new Runnable() {
-            public void run() {
-                initRefreshPool();
-            }
-        });
+        this._poolSize = imcConfig.getPoolSize();
+        cacheConfig.addCallback(this._poolSize, this::initRefreshPool);
 
         setupCache();
         setupMonitoring(appName);
@@ -157,15 +152,15 @@ public class EVCacheInMemoryCache<T> {
                                     try {
                                         T t = load(key);
                                         if(t == null) {
-                                            EVCacheMetricsFactory.increment(appName, null, null, "EVCacheInMemoryCache" + "-" + appName + "-Reload-NotFound");
+                                            cacheMetricsFactory.increment(appName, null, null, "EVCacheInMemoryCache" + "-" + appName + "-Reload-NotFound");
                                             return prev;
                                         } else {
-                                            EVCacheMetricsFactory.increment(appName, null, null, "EVCacheInMemoryCache" + "-" + appName + "-Reload-Success");
+                                            cacheMetricsFactory.increment(appName, null, null, "EVCacheInMemoryCache" + "-" + appName + "-Reload-Success");
                                         }
                                         return t;
                                     } catch (EVCacheException e) {
                                         log.error("EVCacheException while reloading key -> {}", key, e);
-                                        EVCacheMetricsFactory.increment(appName, null, null, "EVCacheInMemoryCache" + "-" + appName + "-Reload-Fail");
+                                        cacheMetricsFactory.increment(appName, null, null, "EVCacheInMemoryCache" + "-" + appName + "-Reload-Fail");
                                         return prev;
                                     }
                                 }

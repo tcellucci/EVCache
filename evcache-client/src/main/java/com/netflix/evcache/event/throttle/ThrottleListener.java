@@ -1,20 +1,18 @@
 package com.netflix.evcache.event.throttle;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Set;
+import java.util.function.Supplier;
+
+import javax.inject.Inject;
+import javax.inject.Singleton;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.inject.Inject;
-import com.google.inject.Singleton;
-import com.netflix.config.DynamicBooleanProperty;
-import com.netflix.config.DynamicStringSetProperty;
 import com.netflix.evcache.EVCache.Call;
 import com.netflix.evcache.event.EVCacheEvent;
 import com.netflix.evcache.event.EVCacheEventListener;
 import com.netflix.evcache.pool.EVCacheClientPoolManager;
-import com.netflix.evcache.util.EVCacheConfig;
 
 /**
  * <p>
@@ -35,22 +33,15 @@ import com.netflix.evcache.util.EVCacheConfig;
 public class ThrottleListener implements EVCacheEventListener {
 
     private static final Logger log = LoggerFactory.getLogger(ThrottleListener.class);
-    private final Map<String, DynamicStringSetProperty> _ignoreOperationsMap;
-    private final DynamicBooleanProperty enableThrottleOperations;
+    private final Supplier<Boolean> enableThrottleOperations;
     private final EVCacheClientPoolManager poolManager;
 
     @Inject 
     public ThrottleListener(EVCacheClientPoolManager poolManager) {
         this.poolManager = poolManager;
-        this._ignoreOperationsMap = new ConcurrentHashMap<String, DynamicStringSetProperty>();
-        enableThrottleOperations = EVCacheConfig.getInstance().getDynamicBooleanProperty("EVCacheThrottler.throttle.operations", false);
-        enableThrottleOperations.addCallback(new Runnable() {
-            @Override
-            public void run() {
-                setupListener();
-            }
-        });
-        if(enableThrottleOperations.get()) setupListener();
+        this.enableThrottleOperations = poolManager.getCacheConfig().isEnableThrottleOperations();
+        poolManager.getCacheConfig().addCallback(enableThrottleOperations, this::setupListener);
+        if(this.enableThrottleOperations.get()) setupListener();
     }
 
     private void setupListener() {
@@ -61,6 +52,7 @@ public class ThrottleListener implements EVCacheEventListener {
         }
     }
 
+    @Override
     public void onStart(final EVCacheEvent e) {
     }
 
@@ -69,21 +61,19 @@ public class ThrottleListener implements EVCacheEventListener {
         if(!enableThrottleOperations.get()) return false;
 
         final String appName = e.getAppName();
-        DynamicStringSetProperty throttleCalls = _ignoreOperationsMap.get(appName);
-        if(throttleCalls == null) {
-            throttleCalls = new DynamicStringSetProperty(appName + ".throttle.calls", "");
-            _ignoreOperationsMap.put(appName, throttleCalls );
-        }
-        if(throttleCalls.get().size() > 0 && throttleCalls.get().contains(e.getCall().name())) {
+        Set<String> throttleCalls = poolManager.getCacheConfig().getClusterConfig(appName).getThrottlerConfig().getThrottleCalls().get();
+        if(!throttleCalls.isEmpty() && throttleCalls.contains(e.getCall().name())) {
             if(log.isDebugEnabled()) log.debug("Call : " + e.getCall() + " is throttled");
             return true;
         }
         return false;
     }
 
+    @Override
     public void onComplete(EVCacheEvent e) {
     }
 
+    @Override
     public void onError(EVCacheEvent e, Throwable t) {
     }
 

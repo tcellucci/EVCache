@@ -9,22 +9,24 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.StringTokenizer;
+import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.net.InetAddresses;
-import com.netflix.evcache.util.EVCacheConfig;
 
 public class SimpleNodeListProvider implements EVCacheNodeList {
 
     private static Logger log = LoggerFactory.getLogger(EVCacheClientPool.class);
 
     private String currentNodeList = "";
+    private final Supplier<String> nodeListSupplier;
     private final String propertyName;
 
-    public SimpleNodeListProvider(String propertyName) {
+    public SimpleNodeListProvider(String propertyName, Supplier<String> nodeListSupplier) {
         this.propertyName = propertyName;
+        this.nodeListSupplier = nodeListSupplier;
     }
 
     /**
@@ -43,7 +45,7 @@ public class SimpleNodeListProvider implements EVCacheNodeList {
      */
     @Override
     public Map<ServerGroup, EVCacheServerGroupConfig> discoverInstances() throws IOException {
-        final String nodeListString = EVCacheConfig.getInstance().getDynamicStringProperty(propertyName, "").get();
+        final String nodeListString = nodeListSupplier.get();
         if (log.isDebugEnabled()) log.debug("List of Nodes = " + nodeListString);
 
         if (nodeListString != null && nodeListString.length() > 0) {

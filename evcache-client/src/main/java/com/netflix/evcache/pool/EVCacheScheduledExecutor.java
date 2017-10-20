@@ -5,6 +5,7 @@ import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
@@ -13,9 +14,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.netflix.config.DynamicIntProperty;
+import com.netflix.evcache.config.CacheConfig;
+import com.netflix.evcache.config.CacheConfig.ExecutorConfig;
 import com.netflix.evcache.metrics.EVCacheMetricsFactory;
-import com.netflix.evcache.util.EVCacheConfig;
 import com.netflix.servo.DefaultMonitorRegistry;
 import com.netflix.servo.MonitorRegistry;
 import com.netflix.servo.annotations.DataSourceType;
@@ -27,32 +28,34 @@ import com.netflix.servo.monitor.MonitorConfig.Builder;
 public class EVCacheScheduledExecutor extends ScheduledThreadPoolExecutor implements EVCacheScheduledExecutorMBean {
 
     private static final Logger log = LoggerFactory.getLogger(EVCacheScheduledExecutor.class);
-    private final DynamicIntProperty maxAsyncPoolSize;
-    private final DynamicIntProperty coreAsyncPoolSize;
+    private final Supplier<Integer> maxAsyncPoolSize;
+    private final Supplier<Integer> coreAsyncPoolSize;
     private final String name;
 
-    public EVCacheScheduledExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, RejectedExecutionHandler handler, String name) {
+    public EVCacheScheduledExecutor(CacheConfig cacheConfig, 
+    		int corePoolSize, 
+    		int maximumPoolSize, 
+    		long keepAliveTime, 
+    		TimeUnit unit, 
+    		RejectedExecutionHandler handler, 
+    		String name) {
         super(corePoolSize, handler);
         this.name = name;
 
-        maxAsyncPoolSize = EVCacheConfig.getInstance().getDynamicIntProperty("EVCacheScheduledExecutor." + name + ".max.size", maximumPoolSize);
+        ExecutorConfig executorConfig = cacheConfig.getExecutorConfig(name);
+		maxAsyncPoolSize = executorConfig.getMaxSize(maximumPoolSize);
         setMaximumPoolSize(maxAsyncPoolSize.get());
-        coreAsyncPoolSize = EVCacheConfig.getInstance().getDynamicIntProperty("EVCacheScheduledExecutor." + name + ".core.size", corePoolSize);
+        coreAsyncPoolSize = executorConfig.getCoreSize(corePoolSize);
         setCorePoolSize(coreAsyncPoolSize.get());
         setKeepAliveTime(keepAliveTime, unit);
         final ThreadFactory asyncFactory = new ThreadFactoryBuilder().setDaemon(true).setNameFormat( "EVCacheScheduledExecutor-" + name + "-%d").build();
         setThreadFactory(asyncFactory);
-        maxAsyncPoolSize.addCallback(new Runnable() {
-            public void run() {
-                setMaximumPoolSize(maxAsyncPoolSize.get());
-            }
-        });
-        coreAsyncPoolSize.addCallback(new Runnable() {
-            public void run() {
+        cacheConfig.addCallback(maxAsyncPoolSize, ()->setMaximumPoolSize(maxAsyncPoolSize.get()));
+        cacheConfig.addCallback(coreAsyncPoolSize, ()-> {
                 setCorePoolSize(coreAsyncPoolSize.get());
                 prestartAllCoreThreads();
             }
-        });
+        );
         
         setupMonitoring(name);
     }

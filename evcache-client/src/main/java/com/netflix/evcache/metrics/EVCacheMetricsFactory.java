@@ -6,11 +6,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Supplier;
 
-import com.netflix.config.DynamicIntProperty;
 import com.netflix.evcache.EVCache.Call;
 import com.netflix.evcache.pool.ServerGroup;
-import com.netflix.evcache.util.EVCacheConfig;
 import com.netflix.servo.DefaultMonitorRegistry;
 import com.netflix.servo.annotations.DataSourceType;
 import com.netflix.servo.monitor.BasicCounter;
@@ -37,29 +36,35 @@ import com.netflix.servo.tag.BasicTag;
 @edu.umd.cs.findbugs.annotations.SuppressFBWarnings(value = { "NF_LOCAL_FAST_PROPERTY",
         "PMB_POSSIBLE_MEMORY_BLOAT" }, justification = "Creates only when needed")
 public final class EVCacheMetricsFactory {
-    private static final Map<String, Stats> statsMap = new ConcurrentHashMap<String, Stats>();
-    private static final Map<String, Monitor<?>> monitorMap = new ConcurrentHashMap<String, Monitor<?>>();
-    private static final Map<String, DistributionSummary> distributionSummaryMap = new ConcurrentHashMap<String, DistributionSummary>();
-    private static final Lock writeLock = (new ReentrantReadWriteLock()).writeLock();
-    private static final Map<String, Timer> timerMap = new HashMap<String, Timer>();
-    private static final DynamicIntProperty sampleSize = EVCacheConfig.getInstance().getDynamicIntProperty("EVCache.metrics.sample.size", 100);
+    private final Map<String, Stats> statsMap = new ConcurrentHashMap<>();
+    private final Map<String, Monitor<?>> monitorMap = new ConcurrentHashMap<>();
+    private final Map<String, MonitorConfig> monitorConfigMap = new ConcurrentHashMap<String, MonitorConfig>();
+    private final Map<String, DistributionSummary> distributionSummaryMap = new ConcurrentHashMap<>();
+    private final Lock writeLock = (new ReentrantReadWriteLock()).writeLock();
+    private final Map<String, Timer> timerMap = new HashMap<>();
+    private final Supplier<Integer> sampleSize;
     public static final Tag OWNER = Tags.newTag("owner", "evcache");
 
-    public static Operation getOperation(String name) {
+    public EVCacheMetricsFactory(Supplier<Integer> sampleSize) {
+    	this.sampleSize = sampleSize;
+    }
+    
+    
+    public Operation getOperation(String name) {
         return getOperation(name, null, null, Operation.TYPE.MILLI);
     }
 
-    public static Operation getOperation(String name, Call op, Stats stats) {
+    public Operation getOperation(String name, Call op, Stats stats) {
         return getOperation(name, op, stats, Operation.TYPE.MILLI);
     }
 
-    public static Operation getOperation(String name, Call op, Stats stats, Operation.TYPE type) {
+    public Operation getOperation(String name, Call op, Stats stats, Operation.TYPE type) {
         final Operation operation = new EVCacheOperation(name, op, stats, type);
         operation.start();
         return operation;
     }
 
-    public static Stats getStats(String appName, String cacheName) {
+    public Stats getStats(String appName, String cacheName) {
         final String key = (cacheName == null) ? appName + ":NA" : appName + ":" + cacheName;
         Stats metrics = statsMap.get(key);
         if (metrics != null) return metrics;
@@ -68,7 +73,7 @@ public final class EVCacheMetricsFactory {
             if (statsMap.containsKey(key)) {
                 metrics = statsMap.get(key);
             } else {
-                statsMap.put(key, metrics = new EVCacheMetrics(appName, cacheName));
+                statsMap.put(key, metrics = new EVCacheMetrics(this, appName, cacheName));
             }
         } finally {
             writeLock.unlock();
@@ -76,20 +81,20 @@ public final class EVCacheMetricsFactory {
         return metrics;
     }
 
-    public static Map<String, Stats> getAllMetrics() {
+    public Map<String, Stats> getAllMetrics() {
         return statsMap;
     }
 
-    public static Map<String, Monitor<?>> getAllMonitor() {
+    public Map<String, Monitor<?>> getAllMonitor() {
         return monitorMap;
     }
     
-    public static Map<String, DistributionSummary> getAllDistributionSummaryMap() {
+    public Map<String, DistributionSummary> getAllDistributionSummaryMap() {
         return distributionSummaryMap;
     }
     
 
-    public static LongGauge getLongGauge(String name) {
+    public LongGauge getLongGauge(String name) {
         LongGauge gauge = (LongGauge) monitorMap.get(name);
         if (gauge == null) {
             writeLock.lock();
@@ -108,7 +113,7 @@ public final class EVCacheMetricsFactory {
         return gauge;
     }
 
-    public static LongGauge getLongGauge(String cName, TagList tag) {
+    public LongGauge getLongGauge(String cName, TagList tag) {
         final String name = cName + tag.toString();
         LongGauge gauge = (LongGauge) monitorMap.get(name);
         if (gauge == null) {
@@ -128,7 +133,7 @@ public final class EVCacheMetricsFactory {
         return gauge;
     }
 
-    public static Counter getCounter(String cName, Tag tag) {
+    public Counter getCounter(String cName, Tag tag) {
         if (tag == null) return getCounter(cName);
         final String name = cName + tag.tagString();
         Counter counter = (Counter) monitorMap.get(name);
@@ -149,7 +154,7 @@ public final class EVCacheMetricsFactory {
         return counter;
     }
 
-    public static Counter getCounter(String cName, TagList tag) {
+    public Counter getCounter(String cName, TagList tag) {
         final String name = cName + tag.toString();
         Counter counter = (Counter) monitorMap.get(name);
         if (counter == null) {
@@ -169,30 +174,30 @@ public final class EVCacheMetricsFactory {
         return counter;
     }
 
-    public static Counter getCounter(String name) {
+    public Counter getCounter(String name) {
         return getCounter(name, DataSourceType.COUNTER);
     }
 
-    public static void increment(String name) {
+    public void increment(String name) {
         final Counter counter = getCounter(name);
         counter.increment();
     }
 
-    public static void increment(String appName, String cacheName, String metricName) {
+    public void increment(String appName, String cacheName, String metricName) {
         final Counter counter = getCounter(appName, cacheName, null, metricName, DataSourceType.COUNTER);
         counter.increment();
     }
 
-    public static void increment(String appName, String cacheName, String serverGroupName, String metricName) {
+    public void increment(String appName, String cacheName, String serverGroupName, String metricName) {
         final Counter counter = getCounter(appName, cacheName, serverGroupName, metricName, DataSourceType.COUNTER);
         counter.increment();
     }
 
-    public static Counter getCounter(String appName, String cacheName, String metricName, Tag tag) {
+    public Counter getCounter(String appName, String cacheName, String metricName, Tag tag) {
         return getCounter(appName, cacheName, null, metricName, DataSourceType.COUNTER);
     }
     
-    public static Counter getCounter(String appName, String cacheName, String serverGroupName, String metricName, Tag tag) {
+    public Counter getCounter(String appName, String cacheName, String serverGroupName, String metricName, Tag tag) {
         final String name = appName + (cacheName != null ? cacheName : "") + (serverGroupName != null ? serverGroupName : "") + metricName + tag.tagString();
         Counter counter = (Counter) monitorMap.get(name);
         if (counter == null) {
@@ -222,7 +227,7 @@ public final class EVCacheMetricsFactory {
         return counter;
     }
 
-    public static StepCounter getStepCounter(String appName, String cacheName, String metric) {
+    public StepCounter getStepCounter(String appName, String cacheName, String metric) {
         final String metricName = getMetricName(appName, null, metric);
         final String name = metricName + (cacheName == null ? "" : "-" + cacheName + "-") + "type=StepCounter";
         final StepCounter counter = (StepCounter) monitorMap.get(name);
@@ -243,7 +248,7 @@ public final class EVCacheMetricsFactory {
 
     }
 
-    public static StatsTimer getStatsTimer(String appName, String cacheName, String metric) {
+    public StatsTimer getStatsTimer(String appName, String cacheName, String metric) {
         final String metricName = getMetricName(appName, null, metric);
         final String name = metricName + (cacheName == null ? "" : "-" + cacheName + "-") + "type=StatsTimer";
         final StatsTimer duration = (StatsTimer) monitorMap.get(name);
@@ -268,7 +273,7 @@ public final class EVCacheMetricsFactory {
         }
     }
 
-    public static StatsTimer getStatsTimer(String appName, ServerGroup serverGroup, String metric) {
+    public StatsTimer getStatsTimer(String appName, ServerGroup serverGroup, String metric) {
         final String serverGroupName = (serverGroup != null ? serverGroup.getName() : "");
         final String metricName = getMetricName(appName, null, metric);
         final String name = metricName + serverGroupName + "type=StatsTimer";
@@ -294,15 +299,15 @@ public final class EVCacheMetricsFactory {
         }
     }
 
-    public static String getMetricName(String appName, String cacheName, String metric) {
+    public String getMetricName(String appName, String cacheName, String metric) {
         return appName + (cacheName == null ? "-" : "-" + cacheName + "-") + metric;
     }
 
-    public static MonitorConfig getMonitorConfig(String appName, String cacheName, String metric) {
+    public MonitorConfig getMonitorConfig(String appName, String cacheName, String metric) {
         return getMonitorConfig(getMetricName(appName, cacheName, metric), appName, cacheName, metric);
     }
 
-    public static MonitorConfig getMonitorConfig(String name, String appName, String cacheName, String metric) {
+    public MonitorConfig getMonitorConfig(String name, String appName, String cacheName, String metric) {
         Builder builder = MonitorConfig.builder(name).withTag("APP", appName).withTag("METRIC", metric).withTag(OWNER);
         if (cacheName != null && cacheName.length() > 0) {
             builder = builder.withTag("CACHE", cacheName);
@@ -310,7 +315,7 @@ public final class EVCacheMetricsFactory {
         return builder.build();
     }
 
-    public static MonitorConfig getMonitorConfig(String name, String appName, String cacheName, String serverGroup, String metric) {
+    public MonitorConfig getMonitorConfig(String name, String appName, String cacheName, String serverGroup, String metric) {
         Builder builder = MonitorConfig.builder(name).withTag("APP", appName).withTag("METRIC", metric).withTag(OWNER);
         if (cacheName != null && cacheName.length() > 0) {
             builder = builder.withTag("CACHE", cacheName);
@@ -321,7 +326,7 @@ public final class EVCacheMetricsFactory {
         return builder.build();
     }
 
-    public static Timer getStatsTimer(String name) {
+    public Timer getStatsTimer(String name) {
         Timer timer = timerMap.get(name);
         if (timer != null) return timer;
         writeLock.lock();
@@ -343,7 +348,7 @@ public final class EVCacheMetricsFactory {
         }
     }
 
-    public static DistributionSummary getDistributionSummary(String name, String appName, String serverGroup) {
+    public DistributionSummary getDistributionSummary(String name, String appName, String serverGroup) {
         final String metricName = getMetricName(appName, serverGroup, name);
         final DistributionSummary _ds = distributionSummaryMap.get(metricName);
         if(_ds != null) return _ds;
@@ -360,5 +365,17 @@ public final class EVCacheMetricsFactory {
         }
         return null;
     }
+    
+    public MonitorConfig getMonitorConfig(final String metricName, final Tag tag) {
+        return getMonitorConfig(metricName, tag, null);
+    }
 
+    public MonitorConfig getMonitorConfig(final String metricName, final Tag tag, final TagList tagList) {
+        return monitorConfigMap.computeIfAbsent(metricName, name -> {
+            final MonitorConfig.Builder monitorConfig = MonitorConfig.builder(metricName);
+            if (tagList != null) monitorConfig.withTags(tagList);
+            if (tag != null) monitorConfig.withTag(tag);
+            return monitorConfig.build();        	
+        });
+    }
 }

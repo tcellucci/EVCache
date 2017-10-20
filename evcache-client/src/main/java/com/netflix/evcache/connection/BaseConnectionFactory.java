@@ -9,15 +9,14 @@ import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
+import java.util.function.Supplier;
 
-import com.netflix.config.ChainedDynamicProperty;
-import com.netflix.config.DynamicIntProperty;
 import com.netflix.evcache.EVCacheTranscoder;
+import com.netflix.evcache.config.CacheConfig.ClusterConfig;
 import com.netflix.evcache.pool.EVCacheClientPoolManager;
 import com.netflix.evcache.pool.EVCacheKetamaNodeLocatorConfiguration;
 import com.netflix.evcache.pool.EVCacheNodeLocator;
 import com.netflix.evcache.pool.ServerGroup;
-import com.netflix.evcache.util.EVCacheConfig;
 
 import net.spy.memcached.BinaryConnectionFactory;
 import net.spy.memcached.ConnectionObserver;
@@ -36,32 +35,37 @@ public class BaseConnectionFactory extends BinaryConnectionFactory {
 
     protected final String name;
     protected final String appName;
-    protected final DynamicIntProperty operationTimeout;
+    protected final Supplier<Integer> operationTimeout;
     protected final long opMaxBlockTime;
     protected final int id;
     protected final ServerGroup serverGroup;
     protected EVCacheNodeLocator locator;
     protected final long startTime;
     protected final EVCacheClientPoolManager poolManager;
-    protected final ChainedDynamicProperty.StringProperty failureMode;
+    protected final Supplier<String> failureMode;
+    protected final Supplier<Boolean> daemonMode;
+    protected final ClusterConfig clusterConfig;
     
-    BaseConnectionFactory(String appName, int len, DynamicIntProperty _operationTimeout, long opMaxBlockTime, int id,
-            ServerGroup serverGroup, EVCacheClientPoolManager poolManager) {
-        super(len, BinaryConnectionFactory.DEFAULT_READ_BUFFER_SIZE, DefaultHashAlgorithm.KETAMA_HASH);
+    BaseConnectionFactory(ClusterConfig clusterConfig, String appName, int id, ServerGroup serverGroup, EVCacheClientPoolManager poolManager) {
+        super(clusterConfig.getClientPoolConfig().getMaxQueueLength().get(), BinaryConnectionFactory.DEFAULT_READ_BUFFER_SIZE, DefaultHashAlgorithm.KETAMA_HASH);
+        this.clusterConfig = clusterConfig;
         this.appName = appName;
-        this.operationTimeout = _operationTimeout;
-        this.opMaxBlockTime = opMaxBlockTime;
         this.id = id;
         this.serverGroup = serverGroup;
         this.poolManager = poolManager;
         this.startTime = System.currentTimeMillis();
-        this.failureMode = EVCacheConfig.getInstance().getChainedStringProperty(this.serverGroup.getName() + ".failure.mode", appName + ".failure.mode", "Retry", null);
+        
+        this.operationTimeout = clusterConfig.getClientPoolConfig().getOperationTimeout();
+        this.opMaxBlockTime = clusterConfig.getClientPoolConfig().getOperationQueueMaxBlockTime().get();
+        this.failureMode = clusterConfig.getFailureMode(serverGroup);
+        this.daemonMode = clusterConfig.getClientPoolConfig().isDaemonMode();
+
         this.name = appName + "-" + serverGroup.getName() + "-" + id;
     }
 
     public NodeLocator createLocator(List<MemcachedNode> list) {
-        this.locator = new EVCacheNodeLocator(appName, serverGroup, list, DefaultHashAlgorithm.KETAMA_HASH,
-                new EVCacheKetamaNodeLocatorConfiguration(appName, serverGroup, poolManager));
+        this.locator = new EVCacheNodeLocator(clusterConfig, appName, serverGroup, list, DefaultHashAlgorithm.KETAMA_HASH,
+                new EVCacheKetamaNodeLocatorConfiguration(clusterConfig, appName, serverGroup, poolManager));
         return locator;
     }
 
@@ -92,10 +96,10 @@ public class BaseConnectionFactory extends BinaryConnectionFactory {
 
     public MemcachedNode createMemcachedNode(SocketAddress sa, SocketChannel c, int bufSize) {
         boolean doAuth = false;
-        final EVCacheNodeImpl node = new EVCacheNodeImpl(sa, c, bufSize, createReadOperationQueue(),
+        final EVCacheNodeImpl node = new EVCacheNodeImpl(poolManager.getCacheMetricsFactory(), sa, c, bufSize, createReadOperationQueue(),
                 createWriteOperationQueue(), createOperationQueue(),
                 opMaxBlockTime, doAuth, getOperationTimeout(), getAuthWaitTime(), this, appName, id, serverGroup,
-                startTime);
+                startTime, clusterConfig.isSendMetrics());
         return node;
     }
 
@@ -112,7 +116,7 @@ public class BaseConnectionFactory extends BinaryConnectionFactory {
     }
 
     public Transcoder<Object> getDefaultTranscoder() {
-        return new EVCacheTranscoder();
+        return new EVCacheTranscoder(clusterConfig.getMaxDataSizeDefault().get(), clusterConfig.getCompressionThresholdDefault().get());
     }
 
     public FailureMode getFailureMode() {
@@ -132,7 +136,7 @@ public class BaseConnectionFactory extends BinaryConnectionFactory {
     }
 
     public boolean isDaemon() {
-        return EVCacheConfig.getInstance().getDynamicBooleanProperty("evcache.thread.daemon", super.isDaemon()).get();
+        return daemonMode.get();
     }
 
     public boolean shouldOptimize() {

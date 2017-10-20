@@ -7,6 +7,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.function.Supplier;
 
 import net.spy.memcached.DefaultHashAlgorithm;
 import net.spy.memcached.EVCacheMemcachedNodeROImpl;
@@ -18,8 +19,7 @@ import net.spy.memcached.util.KetamaNodeLocatorConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.netflix.config.ChainedDynamicProperty;
-import com.netflix.evcache.util.EVCacheConfig;
+import com.netflix.evcache.config.CacheConfig.ClusterConfig;
 
 public class EVCacheNodeLocator implements NodeLocator {
 
@@ -28,8 +28,8 @@ public class EVCacheNodeLocator implements NodeLocator {
     private final String appName;
     private final ServerGroup serverGroup;
 
-    private ChainedDynamicProperty.BooleanProperty partialStringHash;
-    private ChainedDynamicProperty.StringProperty hashDelimiter;
+    private Supplier<Boolean> partialStringHash;
+    private Supplier<String> hashDelimiter;
 
     private final Collection<MemcachedNode> allNodes;
 
@@ -48,7 +48,7 @@ public class EVCacheNodeLocator implements NodeLocator {
      *            consistent hash continuum
      * @param conf
      */
-    public EVCacheNodeLocator(String appName, ServerGroup serverGroup, List<MemcachedNode> nodes, HashAlgorithm alg, KetamaNodeLocatorConfiguration conf) {
+    public EVCacheNodeLocator(ClusterConfig clusterConfig, String appName, ServerGroup serverGroup, List<MemcachedNode> nodes, HashAlgorithm alg, KetamaNodeLocatorConfiguration conf) {
         super();
         this.allNodes = nodes;
         this.hashingAlgorithm = alg;
@@ -56,13 +56,13 @@ public class EVCacheNodeLocator implements NodeLocator {
         this.appName = appName;
         this.serverGroup = serverGroup;
 
-        this.partialStringHash = EVCacheConfig.getInstance().getChainedBooleanProperty("EVCacheNodeLocator." + appName+ ".hash.on.partial.key", "EVCacheNodeLocator." + appName + "." + serverGroup.getName() + ".hash.on.partial.key", Boolean.FALSE, null);
-        this.hashDelimiter = EVCacheConfig.getInstance().getChainedStringProperty("EVCacheNodeLocator." + appName + ".hash.delimiter", "EVCacheNodeLocator." + appName + "." + serverGroup.getName() + ".hash.delimiter", ":", null);
+        this.partialStringHash = clusterConfig.isNodeLocatorHashOnPartialKey(serverGroup.getName());
+        this.hashDelimiter = clusterConfig.getNodeLocatorHashDelimiter(serverGroup.getName());
 
         setKetamaNodes(nodes);
     }
 
-    private EVCacheNodeLocator(String appName, ServerGroup serverGroup, TreeMap<Long, MemcachedNode> smn, Collection<MemcachedNode> an, HashAlgorithm alg, KetamaNodeLocatorConfiguration conf) {
+    private EVCacheNodeLocator(Supplier<Boolean> partialStringHash, Supplier<String> hashDelimiter, String appName, ServerGroup serverGroup, TreeMap<Long, MemcachedNode> smn, Collection<MemcachedNode> an, HashAlgorithm alg, KetamaNodeLocatorConfiguration conf) {
         super();
         this.ketamaNodes = smn;
         this.allNodes = an;
@@ -70,9 +70,8 @@ public class EVCacheNodeLocator implements NodeLocator {
         this.config = conf;
         this.appName = appName;
         this.serverGroup = serverGroup;
-
-        this.partialStringHash = EVCacheConfig.getInstance().getChainedBooleanProperty("EVCacheNodeLocator." + appName + ".hash.on.partial.key", "EVCacheNodeLocator." + appName + "." + serverGroup.getName() + ".hash.on.partial.key", Boolean.FALSE, null);
-        this.hashDelimiter = EVCacheConfig.getInstance().getChainedStringProperty("EVCacheNodeLocator." + appName + ".hash.delimiter", "EVCacheNodeLocator." + appName + "." + serverGroup.getName() + ".hash.delimiter", ":", null);
+        this.partialStringHash = partialStringHash;
+        this.hashDelimiter = hashDelimiter;
     }
 
     /*
@@ -145,7 +144,7 @@ public class EVCacheNodeLocator implements NodeLocator {
             aNodes.add(new EVCacheMemcachedNodeROImpl(n));
         }
 
-        return new EVCacheNodeLocator(appName, serverGroup, ketamaNaodes, aNodes, hashingAlgorithm, config);
+        return new EVCacheNodeLocator(partialStringHash, hashDelimiter, appName, serverGroup, ketamaNaodes, aNodes, hashingAlgorithm, config);
     }
 
     /**

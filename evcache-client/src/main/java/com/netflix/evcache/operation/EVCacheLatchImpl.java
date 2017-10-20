@@ -26,6 +26,7 @@ import net.spy.memcached.ops.StatusCode;
 public class EVCacheLatchImpl implements EVCacheLatch, Runnable {
     private static final Logger log = LoggerFactory.getLogger(EVCacheLatchImpl.class);
 
+    private final EVCacheMetricsFactory cacheMetricsFactory;
     private final int expectedCompleteCount;
     private final CountDownLatch latch;
     private final List<Future<Boolean>> futures;
@@ -41,7 +42,8 @@ public class EVCacheLatchImpl implements EVCacheLatch, Runnable {
     private ScheduledFuture<?> scheduledFuture;
     private final long startTimeMS;
 
-    public EVCacheLatchImpl(Policy policy, int _count, String appName) {
+    public EVCacheLatchImpl(EVCacheMetricsFactory cacheMetricsFactory, Policy policy, int _count, String appName) {
+    	this.cacheMetricsFactory = cacheMetricsFactory;
         this.policy = policy;
         this.futures = new ArrayList<Future<Boolean>>(_count);
         this.appName = appName;
@@ -207,10 +209,10 @@ public class EVCacheLatchImpl implements EVCacheLatch, Runnable {
         completeCount++;
         if(getCompletedCount() >= getExpectedSuccessCount()) {
             final String cachePrefix = null;
-            EVCacheMetricsFactory.getStatsTimer(getAppName(), cachePrefix, "LatchPolicyDuration").record(System.currentTimeMillis() - startTimeMS);
+            cacheMetricsFactory.getStatsTimer(getAppName(), cachePrefix, "LatchPolicyDuration").record(System.currentTimeMillis() - startTimeMS);
             if (log.isDebugEnabled()) log.debug("Future policy satisfied. Last Completed Future = " + future + ". Took " + (System.currentTimeMillis() - startTimeMS) + " milliseconds"); 
         }
-        EVCacheMetricsFactory.increment(appName, null, "EVCacheLatchImpl-OnComplete");
+        cacheMetricsFactory.increment(appName, null, "EVCacheLatchImpl-OnComplete");
         if(evcacheEvent != null) {
             if (log.isDebugEnabled()) log.debug(";App : " + evcacheEvent.getAppName() + "; Call : " + evcacheEvent.getCall() + "; Keys : " + evcacheEvent.getCanonicalKeys() + "; completeCount : " + completeCount + "; totalFutureCount : " + totalFutureCount +"; failureCount : " + failureCount);
             try {
@@ -228,7 +230,7 @@ public class EVCacheLatchImpl implements EVCacheLatch, Runnable {
                         for (EVCacheEventListener evcacheEventListener : evcacheEventListenerList) {
                             evcacheEventListener.onComplete(evcacheEvent);
                         }
-                        EVCacheMetricsFactory.increment(evcacheEvent.getAppName(), evcacheEvent.getCacheName(), "EVCacheLatchImpl-OnComplete-Done");
+                        cacheMetricsFactory.increment(evcacheEvent.getAppName(), evcacheEvent.getCacheName(), "EVCacheLatchImpl-OnComplete-Done");
                         onCompleteDone = true;//This ensures we fire onComplete only once
                         break;
                     }
@@ -242,9 +244,9 @@ public class EVCacheLatchImpl implements EVCacheLatch, Runnable {
                         final boolean status = scheduledFuture.cancel(true);
                         if (log.isDebugEnabled()) log.debug("Cancelled the scheduled task : " + status);
                         if(status) {
-                            EVCacheMetricsFactory.increment(evcacheEvent.getAppName(), evcacheEvent.getCacheName(), "EVCacheLatchImpl-OnComplete-FutureUnregistered-SUCCESS");
+                            cacheMetricsFactory.increment(evcacheEvent.getAppName(), evcacheEvent.getCacheName(), "EVCacheLatchImpl-OnComplete-FutureUnregistered-SUCCESS");
                         } else {
-                            EVCacheMetricsFactory.increment(evcacheEvent.getAppName(), evcacheEvent.getCacheName(), "EVCacheLatchImpl-OnComplete-FutureUnregistered-FAIL");
+                            cacheMetricsFactory.increment(evcacheEvent.getAppName(), evcacheEvent.getCacheName(), "EVCacheLatchImpl-OnComplete-FutureUnregistered-FAIL");
                         }
                     }
                 }
@@ -387,7 +389,7 @@ public class EVCacheLatchImpl implements EVCacheLatch, Runnable {
                         fail = future.get(0, TimeUnit.MILLISECONDS).equals(Boolean.FALSE);
                         if(future instanceof EVCacheOperationFuture) {
                             final EVCacheOperationFuture<Boolean> evcFuture = (EVCacheOperationFuture<Boolean>)future;
-                            EVCacheMetricsFactory.increment(evcFuture.getApp(), null, evcFuture.getServerGroup().getName(), "EVCacheLatchImpl-Done");
+                            cacheMetricsFactory.increment(evcFuture.getApp(), null, evcFuture.getServerGroup().getName(), "EVCacheLatchImpl-Done");
                         }
                     } else {
                         long delayms = 0;
@@ -398,11 +400,11 @@ public class EVCacheLatchImpl implements EVCacheLatch, Runnable {
                         fail = future.get(delayms, TimeUnit.MILLISECONDS).equals(Boolean.FALSE);
                         if(future instanceof EVCacheOperationFuture) {
                             final EVCacheOperationFuture<Boolean> evcFuture = (EVCacheOperationFuture<Boolean>)future;
-                            EVCacheMetricsFactory.getStatsTimer(getAppName(), evcFuture.getServerGroup(), "LatchCheckWaitDuration-"+fail).record(delayms);
+                            cacheMetricsFactory.getStatsTimer(getAppName(), evcFuture.getServerGroup(), "LatchCheckWaitDuration-"+fail).record(delayms);
                         }
                     }
                 } catch (Exception e) {
-                    EVCacheMetricsFactory.increment(evcacheEvent.getAppName(), evcacheEvent.getCacheName(), "EVCacheLatchImpl-Future-checkFail");
+                    cacheMetricsFactory.increment(evcacheEvent.getAppName(), evcacheEvent.getCacheName(), "EVCacheLatchImpl-Future-checkFail");
                     fail = true;
                     if(log.isDebugEnabled()) log.debug(e.getMessage(), e);
                 }
@@ -427,7 +429,7 @@ public class EVCacheLatchImpl implements EVCacheLatch, Runnable {
             }
             if(log.isDebugEnabled()) log.debug("Fail Count : " + failCount);
             if(failCount > 0) {
-                EVCacheMetricsFactory.increment(evcacheEvent.getAppName(), evcacheEvent.getCacheName(), "EVCacheLatchImpl-WriteFail");
+                cacheMetricsFactory.increment(evcacheEvent.getAppName(), evcacheEvent.getCacheName(), "EVCacheLatchImpl-WriteFail");
                 if(evcacheEvent.getClients().size() > 0) {
                     for(EVCacheClient client : evcacheEvent.getClients()) {
                         final List<EVCacheEventListener> evcacheEventListenerList = client.getPool().getEVCacheClientPoolManager().getEVCacheEventListeners();
@@ -439,10 +441,10 @@ public class EVCacheLatchImpl implements EVCacheLatch, Runnable {
                     }
                 }
             } else {
-                EVCacheMetricsFactory.increment(evcacheEvent.getAppName(), evcacheEvent.getCacheName(), "EVCacheLatchImpl-NoFails");
+                cacheMetricsFactory.increment(evcacheEvent.getAppName(), evcacheEvent.getCacheName(), "EVCacheLatchImpl-NoFails");
             }
         } else {
-            EVCacheMetricsFactory.increment(evcacheEvent.getAppName(), evcacheEvent.getCacheName(), "EVCacheLatchImpl-NoEvent");
+            cacheMetricsFactory.increment(evcacheEvent.getAppName(), evcacheEvent.getCacheName(), "EVCacheLatchImpl-NoEvent");
         }
     }
 

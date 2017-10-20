@@ -1,19 +1,9 @@
 package com.netflix.evcache;
 
-import com.netflix.evcache.util.EVCacheConfig;
-
 import net.spy.memcached.CachedData;
 import net.spy.memcached.transcoders.SerializingTranscoder;
 
 public class EVCacheTranscoder extends SerializingTranscoder {
-
-    public EVCacheTranscoder() {
-        this(EVCacheConfig.getInstance().getDynamicIntProperty("default.evcache.max.data.size", Integer.MAX_VALUE).get());
-    }
-
-    public EVCacheTranscoder(int max) {
-        this(max, EVCacheConfig.getInstance().getDynamicIntProperty("default.evcache.compression.threshold", 120).get());
-    }
 
     public EVCacheTranscoder(int max, int compressionThreshold) {
         super(max);

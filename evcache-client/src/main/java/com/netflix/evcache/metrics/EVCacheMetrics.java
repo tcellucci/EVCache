@@ -17,11 +17,13 @@ public class EVCacheMetrics implements EVCacheMetricsMBean, Stats {
     private static final Logger log = LoggerFactory.getLogger(EVCacheMetrics.class);
 
     private final String appName, cacheName;
+    private final EVCacheMetricsFactory cacheMetricsFactory;
     private StepCounter getCallsCounter, bulkCallsCounter, bulkHitsCounter, getHitsCounter, setCallsCounter, addCallsCounter, replaceCallCounter, delCallsCounter, incrCounter, decrCounter;
     private StepCounter bulkMissCounter, getMissCounter;
     private StatsTimer getDuration, bulkDuration, appendOrAddDuration, appendDuration;
 
-    EVCacheMetrics(final String appName, String _cacheName) {
+    EVCacheMetrics(EVCacheMetricsFactory cacheMetricsFactory, final String appName, String _cacheName) {
+    	this.cacheMetricsFactory = cacheMetricsFactory;
         this.appName = appName;
         this.cacheName = (_cacheName == null) ? "" : _cacheName;
 
@@ -74,7 +76,7 @@ public class EVCacheMetrics implements EVCacheMetricsMBean, Stats {
     private StepCounter getCallCounter() {
         if (this.getCallsCounter != null) return this.getCallsCounter;
 
-        this.getCallsCounter = EVCacheMetricsFactory.getStepCounter(appName, cacheName, "GetCall");
+        this.getCallsCounter = cacheMetricsFactory.getStepCounter(appName, cacheName, "GetCall");
         getHitCounter();
 
         return getCallsCounter;
@@ -83,35 +85,35 @@ public class EVCacheMetrics implements EVCacheMetricsMBean, Stats {
     private StepCounter getHitCounter() {
         if (this.getHitsCounter != null) return this.getHitsCounter;
 
-        this.getHitsCounter = EVCacheMetricsFactory.getStepCounter(appName, cacheName, "GetHit");
+        this.getHitsCounter = cacheMetricsFactory.getStepCounter(appName, cacheName, "GetHit");
         return getHitsCounter;
     }
 
     private StepCounter getMissCounter() {
         if (this.getMissCounter != null) return this.getMissCounter;
 
-        this.getMissCounter = EVCacheMetricsFactory.getStepCounter(appName, cacheName, "GetMiss");
+        this.getMissCounter = cacheMetricsFactory.getStepCounter(appName, cacheName, "GetMiss");
         return getMissCounter;
     }
 
     private StepCounter getBulkCounter() {
         if (this.bulkCallsCounter != null) return this.bulkCallsCounter;
 
-        this.bulkCallsCounter = EVCacheMetricsFactory.getStepCounter(appName, cacheName, "BulkCall");
+        this.bulkCallsCounter = cacheMetricsFactory.getStepCounter(appName, cacheName, "BulkCall");
         return bulkCallsCounter;
     }
 
     private StepCounter getBulkHitCounter() {
         if(this.bulkHitsCounter != null) return this.bulkHitsCounter;
 
-        this.bulkHitsCounter = EVCacheMetricsFactory.getStepCounter(appName, cacheName, "BulkHit");
+        this.bulkHitsCounter = cacheMetricsFactory.getStepCounter(appName, cacheName, "BulkHit");
         return bulkHitsCounter;
     }
 
     private StepCounter getBulkMissCounter() {
         if(this.bulkMissCounter != null) return this.bulkMissCounter;
 
-        this.bulkMissCounter = EVCacheMetricsFactory.getStepCounter(appName, cacheName, "BulkMiss");
+        this.bulkMissCounter = cacheMetricsFactory.getStepCounter(appName, cacheName, "BulkMiss");
         return bulkMissCounter;
     }
 
@@ -119,56 +121,56 @@ public class EVCacheMetrics implements EVCacheMetricsMBean, Stats {
     private StepCounter getAddCallCounter() {
         if (this.addCallsCounter != null) return this.addCallsCounter;
 
-        this.addCallsCounter = EVCacheMetricsFactory.getStepCounter(appName, cacheName, "AddCall");
+        this.addCallsCounter = cacheMetricsFactory.getStepCounter(appName, cacheName, "AddCall");
         return addCallsCounter;
     }
 
     private StepCounter getSetCallCounter() {
         if (this.setCallsCounter != null) return this.setCallsCounter;
 
-        this.setCallsCounter = EVCacheMetricsFactory.getStepCounter(appName, cacheName, "SetCall");
+        this.setCallsCounter = cacheMetricsFactory.getStepCounter(appName, cacheName, "SetCall");
         return setCallsCounter;
     }
 
     private StepCounter getReplaceCallCounter() {
         if (this.replaceCallCounter != null) return this.replaceCallCounter;
 
-        this.replaceCallCounter = EVCacheMetricsFactory.getStepCounter(appName, cacheName, "ReplaceCall");
+        this.replaceCallCounter = cacheMetricsFactory.getStepCounter(appName, cacheName, "ReplaceCall");
         return replaceCallCounter;
     }
 
     private StepCounter getDeleteCallCounter() {
         if (this.delCallsCounter != null) return this.delCallsCounter;
 
-        this.delCallsCounter = EVCacheMetricsFactory.getStepCounter(appName, cacheName, "DeleteCall");
+        this.delCallsCounter = cacheMetricsFactory.getStepCounter(appName, cacheName, "DeleteCall");
         return delCallsCounter;
     }
 
     private StatsTimer getAppendOrAddDuration() {
         if (appendOrAddDuration != null) return appendOrAddDuration;
 
-        this.appendOrAddDuration = EVCacheMetricsFactory.getStatsTimer(appName, cacheName, "LatencyAppendOrAdd");
+        this.appendOrAddDuration = cacheMetricsFactory.getStatsTimer(appName, cacheName, "LatencyAppendOrAdd");
         return appendOrAddDuration;
     }
     
     private StatsTimer getAppendDuration() {
         if (appendDuration != null) return appendDuration;
 
-        this.appendDuration = EVCacheMetricsFactory.getStatsTimer(appName, cacheName, "LatencyAppend");
+        this.appendDuration = cacheMetricsFactory.getStatsTimer(appName, cacheName, "LatencyAppend");
         return appendDuration;
     }
     
     private StatsTimer getGetCallDuration() {
         if (getDuration != null) return getDuration;
 
-        this.getDuration = EVCacheMetricsFactory.getStatsTimer(appName, cacheName, "LatencyGet");
+        this.getDuration = cacheMetricsFactory.getStatsTimer(appName, cacheName, "LatencyGet");
         return getDuration;
     }
 
     private StatsTimer getBulkCallDuration() {
         if (bulkDuration != null) return bulkDuration;
 
-        this.bulkDuration = EVCacheMetricsFactory.getStatsTimer(appName, cacheName, "LatencyBulk");
+        this.bulkDuration = cacheMetricsFactory.getStatsTimer(appName, cacheName, "LatencyBulk");
         return bulkDuration;
     }
 
@@ -219,7 +221,7 @@ public class EVCacheMetrics implements EVCacheMetricsMBean, Stats {
     private StepCounter getIncrCounter() {
         if (this.incrCounter != null) return this.incrCounter;
 
-        this.incrCounter = EVCacheMetricsFactory.getStepCounter(appName, cacheName, "IncrCall");
+        this.incrCounter = cacheMetricsFactory.getStepCounter(appName, cacheName, "IncrCall");
 
         return incrCounter;
     }
@@ -227,7 +229,7 @@ public class EVCacheMetrics implements EVCacheMetricsMBean, Stats {
     private StepCounter getDecrCounter() {
         if (this.decrCounter != null) return this.decrCounter;
 
-        this.decrCounter = EVCacheMetricsFactory.getStepCounter(appName, cacheName, "DecrCall");
+        this.decrCounter = cacheMetricsFactory.getStepCounter(appName, cacheName, "DecrCall");
 
         return decrCounter;
     }

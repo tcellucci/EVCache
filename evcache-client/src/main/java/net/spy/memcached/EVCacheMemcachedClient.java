@@ -15,21 +15,20 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.netflix.config.ChainedDynamicProperty;
-import com.netflix.config.DynamicLongProperty;
 import com.netflix.evcache.EVCacheGetOperationListener;
 import com.netflix.evcache.EVCacheLatch;
+import com.netflix.evcache.config.CacheConfig;
 import com.netflix.evcache.metrics.EVCacheMetricsFactory;
 import com.netflix.evcache.operation.EVCacheBulkGetFuture;
 import com.netflix.evcache.operation.EVCacheLatchImpl;
 import com.netflix.evcache.operation.EVCacheOperationFuture;
 import com.netflix.evcache.pool.EVCacheClient;
 import com.netflix.evcache.pool.ServerGroup;
-import com.netflix.evcache.util.EVCacheConfig;
 import com.netflix.servo.annotations.DataSourceType;
 import com.netflix.servo.monitor.Counter;
 import com.netflix.servo.monitor.Stopwatch;
@@ -60,9 +59,10 @@ public class EVCacheMemcachedClient extends MemcachedClient {
 
     private static final Logger log = LoggerFactory.getLogger(EVCacheMemcachedClient.class);
     private final int id;
+    private final EVCacheMetricsFactory cacheMetricsFactory;
     private final String appName;
     private final String zone;
-    private final ChainedDynamicProperty.IntProperty readTimeout;
+    private final Supplier<Integer> readTimeout;
     private final ServerGroup serverGroup;
     private final EVCacheClient client;
     private final ConnectionFactory connectionFactory;
@@ -70,12 +70,13 @@ public class EVCacheMemcachedClient extends MemcachedClient {
     private final Map<String, Timer> timerMap = new ConcurrentHashMap<String, Timer>();
 
     private DistributionSummary getDataSize, bulkDataSize, getAndTouchDataSize;
-    private DynamicLongProperty mutateOperationTimeout;
+    private final Supplier<Long> mutateOperationTimeout;
 
-    public EVCacheMemcachedClient(ConnectionFactory cf, List<InetSocketAddress> addrs,
-            ChainedDynamicProperty.IntProperty readTimeout, String appName, String zone, int id,
+    public EVCacheMemcachedClient(CacheConfig cacheConfig, EVCacheMetricsFactory cacheMetricsFactory, ConnectionFactory cf, List<InetSocketAddress> addrs,
+    		Supplier<Integer> readTimeout, String appName, String zone, int id,
             ServerGroup serverGroup, EVCacheClient client) throws IOException {
         super(cf, addrs);
+        this.cacheMetricsFactory = cacheMetricsFactory;
         this.connectionFactory = cf;
         this.id = id;
         this.appName = appName;
@@ -83,6 +84,7 @@ public class EVCacheMemcachedClient extends MemcachedClient {
         this.readTimeout = readTimeout;
         this.serverGroup = serverGroup;
         this.client = client;
+        this.mutateOperationTimeout = cacheConfig.getMutateTimeout(connectionFactory.getOperationTimeout());
     }
 
     public NodeLocator getNodeLocator() {
@@ -99,7 +101,7 @@ public class EVCacheMemcachedClient extends MemcachedClient {
 
     public <T> EVCacheOperationFuture<T> asyncGet(final String key, final Transcoder<T> tc, EVCacheGetOperationListener<T> listener) {
         final CountDownLatch latch = new CountDownLatch(1);
-        final EVCacheOperationFuture<T> rv = new EVCacheOperationFuture<T>(key, latch, new AtomicReference<T>(null), readTimeout.get().intValue(), executorService, appName, serverGroup);
+        final EVCacheOperationFuture<T> rv = new EVCacheOperationFuture<T>(cacheMetricsFactory, key, latch, new AtomicReference<T>(null), readTimeout.get().intValue(), executorService, appName, serverGroup);
         final Stopwatch operationDuration = getTimer(GET_OPERATION_STRING).start();
         Operation op = opFact.get(key, new GetOperation.Callback() {
             private Future<T> val = null;
@@ -122,7 +124,7 @@ public class EVCacheMemcachedClient extends MemcachedClient {
             public void gotData(String k, int flags, byte[] data) {
 
                 if (data != null)  {
-                    if(getDataSize == null) getDataSize = EVCacheMetricsFactory.getDistributionSummary(appName + "-GetOperation-DataSize", appName, serverGroup.getName());
+                    if(getDataSize == null) getDataSize = cacheMetricsFactory.getDistributionSummary(appName + "-GetOperation-DataSize", appName, serverGroup.getName());
                     if (getDataSize != null) getDataSize.record(data.length);
                 }
                 if (!key.equals(k)) log.warn("Wrong key returned. Key - {}; Returned Key {}", key, k);
@@ -181,7 +183,7 @@ public class EVCacheMemcachedClient extends MemcachedClient {
         int initialLatchCount = chunks.isEmpty() ? 0 : 1;
         final CountDownLatch latch = new CountDownLatch(initialLatchCount);
         final Collection<Operation> ops = new ArrayList<Operation>(chunks.size());
-        final EVCacheBulkGetFuture<T> rv = new EVCacheBulkGetFuture<T>(appName, m, ops, latch, executorService, serverGroup, metricName);
+        final EVCacheBulkGetFuture<T> rv = new EVCacheBulkGetFuture<T>(cacheMetricsFactory, appName, m, ops, latch, executorService, serverGroup, metricName);
         final Stopwatch operationDuration = getTimer(BULK_OPERATION_STRING).start(); 
         GetOperation.Callback cb = new GetOperation.Callback() {
             @Override
@@ -194,7 +196,7 @@ public class EVCacheMemcachedClient extends MemcachedClient {
             @Override
             public void gotData(String k, int flags, byte[] data) {
                 if (data != null)  {
-                    if(bulkDataSize == null) bulkDataSize = EVCacheMetricsFactory.getDistributionSummary(appName + "-BulkOperation-DataSize", appName, serverGroup.getName());
+                    if(bulkDataSize == null) bulkDataSize = cacheMetricsFactory.getDistributionSummary(appName + "-BulkOperation-DataSize", appName, serverGroup.getName());
                     if (bulkDataSize != null) bulkDataSize.record(data.length);
                 }
                 m.put(k, tcService.decode(tc, new CachedData(flags, data, tc.getMaxSize())));
@@ -226,7 +228,7 @@ public class EVCacheMemcachedClient extends MemcachedClient {
 
     public <T> EVCacheOperationFuture<CASValue<T>> asyncGetAndTouch(final String key, final int exp, final Transcoder<T> tc) {
         final CountDownLatch latch = new CountDownLatch(1);
-        final EVCacheOperationFuture<CASValue<T>> rv = new EVCacheOperationFuture<CASValue<T>>(key, latch, new AtomicReference<CASValue<T>>(null), connectionFactory.getOperationTimeout(), executorService, appName, serverGroup);
+        final EVCacheOperationFuture<CASValue<T>> rv = new EVCacheOperationFuture<CASValue<T>>(cacheMetricsFactory, key, latch, new AtomicReference<CASValue<T>>(null), connectionFactory.getOperationTimeout(), executorService, appName, serverGroup);
         final Stopwatch operationDuration = getTimer(GET_AND_TOUCH_OPERATION_STRING).start();
         Operation op = opFact.getAndTouch(key, exp, new GetAndTouchOperation.Callback() {
             private CASValue<T> val = null;
@@ -244,7 +246,7 @@ public class EVCacheMemcachedClient extends MemcachedClient {
             public void gotData(String k, int flags, long cas, byte[] data) {
                 if (!key.equals(k)) log.warn("Wrong key returned. Key - {}; Returned Key {}", key, k);
                 if (data != null)  {
-                    if(getAndTouchDataSize == null) getAndTouchDataSize = EVCacheMetricsFactory.getDistributionSummary(appName + "-GATOperation-DataSize", appName, serverGroup.getName());
+                    if(getAndTouchDataSize == null) getAndTouchDataSize = cacheMetricsFactory.getDistributionSummary(appName + "-GATOperation-DataSize", appName, serverGroup.getName());
                     if (getAndTouchDataSize != null) getAndTouchDataSize.record(data.length);
                 }
 
@@ -347,7 +349,7 @@ public class EVCacheMemcachedClient extends MemcachedClient {
 
     public <T> OperationFuture<Boolean> asyncAppendOrAdd(final String key, int exp, CachedData co, EVCacheLatch evcacheLatch) {
         final CountDownLatch latch = new CountDownLatch(1);
-        final OperationFuture<Boolean> rv = new EVCacheOperationFuture<Boolean>(key, latch, new AtomicReference<Boolean>(null), connectionFactory.getOperationTimeout(), executorService, appName, serverGroup);
+        final OperationFuture<Boolean> rv = new EVCacheOperationFuture<Boolean>(cacheMetricsFactory, key, latch, new AtomicReference<Boolean>(null), connectionFactory.getOperationTimeout(), executorService, appName, serverGroup);
         final Stopwatch operationDuration = getTimer(AOA_STRING).start();
         Operation op = opFact.cat(ConcatenationType.append, 0, key, co.getData(),
                 new OperationCallback() {
@@ -438,7 +440,7 @@ public class EVCacheMemcachedClient extends MemcachedClient {
         Timer timer = timerMap.get(name);
         if(timer != null) return timer;
 
-        timer = EVCacheMetricsFactory.getStatsTimer(appName, serverGroup, name);
+        timer = cacheMetricsFactory.getStatsTimer(appName, serverGroup, name);
         timerMap.put(name, timer);
         return timer;
     }
@@ -447,7 +449,7 @@ public class EVCacheMemcachedClient extends MemcachedClient {
         Counter counter = counterMap.get(counterMetric);
         if(counter != null) return counter;
 
-        counter = EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-" + counterMetric, DataSourceType.COUNTER);
+        counter = cacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-" + counterMetric, DataSourceType.COUNTER);
         counterMap.put(counterMetric, counter);
         return counter;
     }
@@ -474,7 +476,7 @@ public class EVCacheMemcachedClient extends MemcachedClient {
         }
 
         final Timer timer = getTimer(operationStr);
-        final OperationFuture<Boolean> rv = new EVCacheOperationFuture<Boolean>(key, latch, new AtomicReference<Boolean>(null), connectionFactory.getOperationTimeout(), executorService, appName, serverGroup);
+        final OperationFuture<Boolean> rv = new EVCacheOperationFuture<Boolean>(cacheMetricsFactory, key, latch, new AtomicReference<Boolean>(null), connectionFactory.getOperationTimeout(), executorService, appName, serverGroup);
         Operation op = opFact.store(storeType, key, co.getFlags(), exp, co.getData(), new StoreOperation.Callback() {
             
             final Stopwatch operationDuration = timer.start();
@@ -569,10 +571,6 @@ public class EVCacheMemcachedClient extends MemcachedClient {
             }
         }));
         try {
-            if(mutateOperationTimeout == null) {
-                mutateOperationTimeout = EVCacheConfig.getInstance().getDynamicLongProperty("evache.mutate.timeout", connectionFactory.getOperationTimeout());
-            }
-
             if (!latch.await(mutateOperationTimeout.get(), TimeUnit.MILLISECONDS)) {
                 return rv.get();
             }
@@ -588,7 +586,7 @@ public class EVCacheMemcachedClient extends MemcachedClient {
         final long upTime = System.currentTimeMillis() - evcNode.getCreateTime();
         if (log.isDebugEnabled()) log.debug("Reconnecting node : " + evcNode + "; UpTime : " + upTime);
         if(upTime > 30000) { //not more than once every 30 seconds : TODO make this configurable
-            EVCacheMetricsFactory.getCounter(appName + "-RECONNECT", evcNode.getBaseTags()).increment();
+        	cacheMetricsFactory.getCounter(appName + "-RECONNECT", evcNode.getBaseTags()).increment();
             evcNode.setConnectTime(System.currentTimeMillis());
             mconn.queueReconnect(evcNode);
         }

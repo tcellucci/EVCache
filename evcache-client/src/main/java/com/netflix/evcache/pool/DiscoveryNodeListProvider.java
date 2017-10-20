@@ -9,6 +9,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,12 +21,11 @@ import com.netflix.appinfo.ApplicationInfoManager;
 import com.netflix.appinfo.DataCenterInfo;
 import com.netflix.appinfo.InstanceInfo;
 import com.netflix.appinfo.InstanceInfo.InstanceStatus;
-import com.netflix.config.ChainedDynamicProperty;
-import com.netflix.config.DynamicStringSetProperty;
 import com.netflix.discovery.DiscoveryClient;
 import com.netflix.discovery.shared.Application;
+import com.netflix.evcache.config.CacheConfig;
+import com.netflix.evcache.config.CacheConfig.ClusterConfig;
 import com.netflix.evcache.metrics.EVCacheMetricsFactory;
-import com.netflix.evcache.util.EVCacheConfig;
 import com.netflix.servo.tag.BasicTagList;
 
 public class DiscoveryNodeListProvider implements EVCacheNodeList {
@@ -34,15 +35,18 @@ public class DiscoveryNodeListProvider implements EVCacheNodeList {
     private final DiscoveryClient _discoveryClient;
     private final String _appName;
     private final ApplicationInfoManager applicationInfoManager;
-    private final Map<String, ChainedDynamicProperty.BooleanProperty> useRendBatchPortMap = new HashMap<String, ChainedDynamicProperty.BooleanProperty>();
-    private final DynamicStringSetProperty ignoreHosts;
+    private final Map<String, Supplier<Boolean>> useRendBatchPortMap;
+    private final ClusterConfig clusterConfig;
+    private final EVCacheMetricsFactory cacheMetricsFactory;
 
-    public DiscoveryNodeListProvider(ApplicationInfoManager applicationInfoManager, DiscoveryClient discoveryClient,
+    public DiscoveryNodeListProvider(CacheConfig cacheConfig, ApplicationInfoManager applicationInfoManager, DiscoveryClient discoveryClient, EVCacheMetricsFactory cacheMetricsFactory,
             String appName) {
+    	this.useRendBatchPortMap = new ConcurrentHashMap<>();
         this.applicationInfoManager = applicationInfoManager;
         this._discoveryClient = discoveryClient;
+        this.cacheMetricsFactory = cacheMetricsFactory;
         this._appName = appName;
-        ignoreHosts = new DynamicStringSetProperty(appName + ".ignore.hosts", "");
+        this.clusterConfig = cacheConfig.getClusterConfig(appName);
 
     }
 
@@ -85,12 +89,12 @@ public class DiscoveryNodeListProvider implements EVCacheNodeList {
             // We checked above if this instance is Amazon so no need to do a instanceof check
             final String zone = amznInfo.get(AmazonInfo.MetaDataKey.availabilityZone);
             if(zone == null) {
-                EVCacheMetricsFactory.increment(_appName, null, "EVCacheClient-DiscoveryNodeListProvider-NULL_ZONE");
+                cacheMetricsFactory.increment(_appName, null, "EVCacheClient-DiscoveryNodeListProvider-NULL_ZONE");
                 continue;
             }
             final String asgName = iInfo.getASGName();
             if(asgName == null) {
-                EVCacheMetricsFactory.increment(_appName, null, "EVCacheClient-DiscoveryNodeListProvider-NULL_SERVER_GROUP");
+            	cacheMetricsFactory.increment(_appName, null, "EVCacheClient-DiscoveryNodeListProvider-NULL_SERVER_GROUP");
                 continue;
             }
 
@@ -101,11 +105,8 @@ public class DiscoveryNodeListProvider implements EVCacheNodeList {
             final int udsproxyMemcachedPort = (metaInfo != null && metaInfo.containsKey("udsproxy.memcached.port")) ? Integer.parseInt(metaInfo.get("udsproxy.memcached.port")) : 0;
             final int udsproxyMementoPort = (metaInfo != null && metaInfo.containsKey("udsproxy.memento.port")) ? Integer.parseInt(metaInfo.get("udsproxy.memento.port")) : 0;
 
-            ChainedDynamicProperty.BooleanProperty useBatchPort = useRendBatchPortMap.get(asgName);
-            if (useBatchPort == null) {
-                useBatchPort = EVCacheConfig.getInstance().getChainedBooleanProperty(_appName + ".use.batch.port", "evcache.use.batch.port", Boolean.FALSE, null);
-                useRendBatchPortMap.put(asgName, useBatchPort);
-            }
+            Supplier<Boolean> useBatchPort = useRendBatchPortMap.computeIfAbsent(asgName, asg->clusterConfig.isUseBatchPort());
+
             final int port = rendPort == 0 ? evcachePort : ((useBatchPort.get().booleanValue()) ? rendBatchPort : rendPort);
 
             final ServerGroup serverGroup = new ServerGroup(zone, asgName);
@@ -118,7 +119,7 @@ public class DiscoveryNodeListProvider implements EVCacheNodeList {
                 instances = new HashSet<InetSocketAddress>();
                 config = new EVCacheServerGroupConfig(serverGroup, instances, rendPort, udsproxyMemcachedPort, udsproxyMementoPort);
                 instancesSpecific.put(serverGroup, config);
-                EVCacheMetricsFactory.getLongGauge(_appName + "-port", BasicTagList.of("ServerGroup", asgName, "APP", _appName)).set(Long.valueOf(port));
+                cacheMetricsFactory.getLongGauge(_appName + "-port", BasicTagList.of("ServerGroup", asgName, "APP", _appName)).set(Long.valueOf(port));
             }
 
             /* Don't try to use downed instances */
@@ -157,8 +158,9 @@ public class DiscoveryNodeListProvider implements EVCacheNodeList {
             final String vpcId = amznInfo.get(AmazonInfo.MetaDataKey.vpcId);
             final String localIp = amznInfo.get(AmazonInfo.MetaDataKey.localIpv4);
             if (log.isDebugEnabled()) log.debug("myZone - " + myZone + "; zone : " + zone + "; myRegion : " + myRegion + "; region : " + region + "; host : " + host + "; vpcId : " + vpcId);
-            if(localIp != null && ignoreHosts.get().contains(localIp)) continue;
-            if(host != null && ignoreHosts.get().contains(host)) continue;
+            Set<String> ignoreHosts = clusterConfig.getIgnoreHosts().get();
+            if(localIp != null && ignoreHosts.contains(localIp)) continue;
+            if(host != null && ignoreHosts.contains(host)) continue;
 
             if (vpcId != null) {
                 final InetAddress add = InetAddresses.forString(localIp);

@@ -12,6 +12,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
+import java.util.function.Supplier;
 
 import javax.annotation.PreDestroy;
 import javax.inject.Inject;
@@ -22,16 +23,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.netflix.appinfo.ApplicationInfoManager;
-import com.netflix.config.DynamicIntProperty;
-import com.netflix.config.DynamicStringProperty;
 import com.netflix.discovery.DiscoveryClient;
 import com.netflix.discovery.DiscoveryManager;
 import com.netflix.evcache.EVCacheImpl;
 import com.netflix.evcache.EVCacheInMemoryCache;
+import com.netflix.evcache.config.CacheConfig;
 import com.netflix.evcache.connection.DefaultFactoryProvider;
 import com.netflix.evcache.connection.IConnectionFactoryProvider;
 import com.netflix.evcache.event.EVCacheEventListener;
-import com.netflix.evcache.util.EVCacheConfig;
+import com.netflix.evcache.metrics.EVCacheMetricsFactory;
 
 import net.spy.memcached.transcoders.Transcoder;
 
@@ -69,8 +69,9 @@ import net.spy.memcached.transcoders.Transcoder;
 @Singleton
 public class EVCacheClientPoolManager {
     private static final Logger log = LoggerFactory.getLogger(EVCacheClientPoolManager.class);
-    private static final DynamicIntProperty defaultReadTimeout = EVCacheConfig.getInstance().getDynamicIntProperty("default.read.timeout", 20);
-    private static final DynamicStringProperty logEnabledApps = EVCacheConfig.getInstance().getDynamicStringProperty("EVCacheClientPoolManager.log.apps", "*");
+    private final EVCacheMetricsFactory cacheMetricsFactory;
+    private final Supplier<Integer> defaultReadTimeout;
+    private final Supplier<String> logEnabledApps;
 
     @Deprecated
     private volatile static EVCacheClientPoolManager instance;
@@ -83,18 +84,23 @@ public class EVCacheClientPoolManager {
     private final ApplicationInfoManager applicationInfoManager;
     private final List<EVCacheEventListener> evcacheEventListenerList;
     private final Provider<IConnectionFactoryProvider> connectionFactoryprovider;
+    private final CacheConfig cacheConfig;
 
     @Inject
-    public EVCacheClientPoolManager(ApplicationInfoManager applicationInfoManager, DiscoveryClient discoveryClient, Provider<IConnectionFactoryProvider> connectionFactoryprovider) {
+    public EVCacheClientPoolManager(CacheConfig cacheConfig, ApplicationInfoManager applicationInfoManager, DiscoveryClient discoveryClient, EVCacheMetricsFactory cacheMetricsFactory, Provider<IConnectionFactoryProvider> connectionFactoryprovider) {
         instance = this;
+        this.cacheMetricsFactory = cacheMetricsFactory;
+        this.cacheConfig = cacheConfig;
         this.applicationInfoManager = applicationInfoManager;
         this.discoveryClient = discoveryClient;
         this.connectionFactoryprovider = connectionFactoryprovider;
         this.evcacheEventListenerList = new ArrayList<EVCacheEventListener>();
-        this.asyncExecutor = new EVCacheScheduledExecutor(Runtime.getRuntime().availableProcessors(),Runtime.getRuntime().availableProcessors(), 30, TimeUnit.SECONDS, new ThreadPoolExecutor.CallerRunsPolicy(), "scheduled");
+        this.asyncExecutor = new EVCacheScheduledExecutor(cacheConfig, Runtime.getRuntime().availableProcessors(),Runtime.getRuntime().availableProcessors() * 2, 30L, TimeUnit.SECONDS, new ThreadPoolExecutor.CallerRunsPolicy(), "scheduled");
         asyncExecutor.prestartAllCoreThreads();
         this.syncExecutor = new EVCacheExecutor(Runtime.getRuntime().availableProcessors(),Runtime.getRuntime().availableProcessors(), 30, TimeUnit.SECONDS, new ThreadPoolExecutor.CallerRunsPolicy(), "pool");
         syncExecutor.prestartAllCoreThreads();
+        this.defaultReadTimeout = cacheConfig.getDefaultReadTimeout();
+        this.logEnabledApps = cacheConfig.getLogEnabledApps();
 
         initAtStartup();
     }
@@ -122,10 +128,13 @@ public class EVCacheClientPoolManager {
      * instances.
      */
     @Deprecated
-    public static EVCacheClientPoolManager getInstance() {
+    public static EVCacheClientPoolManager getInstance(CacheConfig cacheConfig) {
         if (instance == null) {
-            new EVCacheClientPoolManager(null, null, new DefaultFactoryProvider());
-            if (!EVCacheConfig.getInstance().getDynamicBooleanProperty("evcache.use.simple.node.list.provider", false).get()) {
+            new EVCacheClientPoolManager(cacheConfig, ApplicationInfoManager.getInstance(), null, 
+            		new EVCacheMetricsFactory(cacheConfig.getMetricsSampleSize()), 
+            		new DefaultFactoryProvider(cacheConfig));
+            Supplier<Boolean> useSimpleNodeListProvider = cacheConfig.isUseSimpleNodeListProvider();
+			if (!useSimpleNodeListProvider.get()) {
                 log.warn("Please make sure EVCacheClientPoolManager is injected first. This is not the appropriate way to init EVCacheClientPoolManager."
                         + " If you are using simple node list provider please set evcache.use.simple.node.list.provider property to true.", new Exception());
             }
@@ -149,7 +158,7 @@ public class EVCacheClientPoolManager {
      */
     public void initAtStartup() {
         //final String appsToInit = ConfigurationManager.getConfigInstance().getString("evcache.appsToInit");
-        final String appsToInit = EVCacheConfig.getInstance().getDynamicStringProperty("evcache.appsToInit", "").get();
+        final String appsToInit = cacheConfig.getAppsToInit();
         if (appsToInit != null && appsToInit.length() > 0) {
             final StringTokenizer apps = new StringTokenizer(appsToInit, ",");
             while (apps.hasMoreTokens()) {
@@ -173,13 +182,14 @@ public class EVCacheClientPoolManager {
         final String APP = getAppName(app);
         if (poolMap.containsKey(APP)) return;
         final EVCacheNodeList provider;
-        if (EVCacheConfig.getInstance().getChainedBooleanProperty(APP + ".use.simple.node.list.provider", "evcache.use.simple.node.list.provider", Boolean.FALSE, null).get()) {
-            provider = new SimpleNodeListProvider(APP + "-NODES");
+        
+        if (cacheConfig.isUseSimpleNodeListProvider().get()) {
+            provider = new SimpleNodeListProvider(APP + "-NODES", cacheConfig.getClusterConfig(APP).getSimpleNodeList());
         } else {
-            provider = new DiscoveryNodeListProvider(applicationInfoManager, discoveryClient, APP);
+            provider = new DiscoveryNodeListProvider(cacheConfig, applicationInfoManager, discoveryClient, cacheMetricsFactory, APP);
         }
 
-        final EVCacheClientPool pool = new EVCacheClientPool(APP, provider, asyncExecutor, this);
+        final EVCacheClientPool pool = new EVCacheClientPool(cacheConfig, APP, provider, asyncExecutor, this);
         scheduleRefresh(pool);
         poolMap.put(APP, pool);
     }
@@ -226,7 +236,7 @@ public class EVCacheClientPoolManager {
         return false;
     }
 
-    public static DynamicIntProperty getDefaultReadTimeout() {
+    public Supplier<Integer> getDefaultReadTimeout() {
         return defaultReadTimeout;
     }
 
@@ -240,7 +250,7 @@ public class EVCacheClientPoolManager {
 
     private String getAppName(String _app) {
         _app = _app.toUpperCase();
-        final String app = EVCacheConfig.getInstance().getDynamicStringProperty("EVCacheClientPoolManager." + _app + ".alias", _app).get().toUpperCase();
+        final String app = cacheConfig.getAlias(_app).toUpperCase();
         if (log.isDebugEnabled()) log.debug("Original App Name : " + _app + "; Alias App Name : " + app);
         return app;
     }
@@ -253,7 +263,7 @@ public class EVCacheClientPoolManager {
         if(cache == null) {
             writeLock.lock();
             if((cache = getInMemoryCache(appName)) == null) {
-                cache = new EVCacheInMemoryCache<T>(appName, tc, impl);
+                cache = new EVCacheInMemoryCache<T>(appName, cacheMetricsFactory, tc, impl);
                 inMemoryMap.put(appName, cache);
             }
             writeLock.unlock();
@@ -265,5 +275,13 @@ public class EVCacheClientPoolManager {
     public <T> EVCacheInMemoryCache<T> getInMemoryCache(String appName) {
         return (EVCacheInMemoryCache<T>) inMemoryMap.get(appName);
     }
+
+	public EVCacheMetricsFactory getCacheMetricsFactory() {
+		return cacheMetricsFactory;
+	}
+
+	public CacheConfig getCacheConfig() {
+		return cacheConfig;
+	}
 
 }

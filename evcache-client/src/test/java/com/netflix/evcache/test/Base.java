@@ -35,8 +35,8 @@ public abstract class Base  {
 
     private static final Logger log = LoggerFactory.getLogger(Base.class);
     protected EVCache evCache = null;
-    protected Injector injector = null;
-    protected LifecycleManager lifecycleManager = null;
+    protected Injector injector;
+    protected LifecycleManager lifecycleManager;
     protected EVCacheClientPoolManager manager = null;
 
     protected Properties getProps() {
@@ -94,7 +94,14 @@ public abstract class Base  {
 
     @AfterSuite
     public void shutdownEnv() {
-        lifecycleManager.close();
+        if (lifecycleManager != null) {
+        	try {
+				lifecycleManager.close();
+			} catch (Exception e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+        }
     }
 
     protected EVCache.Builder getNewBuilder() {
@@ -193,7 +200,7 @@ public abstract class Base  {
         String key = "key_" + i;
         long start = System.currentTimeMillis();
         final EVCacheClient[] clients = manager.getEVCacheClientPool(app).getEVCacheClientForWrite();
-        final EVCacheLatch latch = new EVCacheLatchImpl(EVCacheLatch.Policy.ALL, clients.length, app);
+        final EVCacheLatch latch = new EVCacheLatchImpl(manager.getCacheMetricsFactory(), EVCacheLatch.Policy.ALL, clients.length, app);
         for (EVCacheClient client : clients) {
             client.set(key, val, 60 * 60, latch);
         }
@@ -206,7 +213,7 @@ public abstract class Base  {
         long start = System.currentTimeMillis();
         String key = "key_" + i;
         final EVCacheClient[] clients = manager.getEVCacheClientPool(appName).getEVCacheClientForWrite();
-        final EVCacheLatch latch = new EVCacheLatchImpl(Policy.ALL, clients.length, appName);
+        final EVCacheLatch latch = new EVCacheLatchImpl(manager.getCacheMetricsFactory(), Policy.ALL, clients.length, appName);
         for (EVCacheClient client : clients) {
             client.delete(key, latch);
         }

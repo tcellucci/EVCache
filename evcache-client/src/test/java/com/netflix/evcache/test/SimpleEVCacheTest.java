@@ -19,6 +19,9 @@ import org.testng.annotations.Test;
 
 import com.netflix.evcache.EVCache;
 import com.netflix.evcache.EVCacheImpl;
+import com.netflix.evcache.config.Archaius1PropertyRepo;
+import com.netflix.evcache.config.CacheConfig;
+import com.netflix.evcache.config.PropertyRepoCacheConfig;
 import com.netflix.evcache.pool.EVCacheClient;
 import com.netflix.evcache.pool.EVCacheClientPool;
 import com.netflix.evcache.pool.EVCacheClientPoolManager;
@@ -30,6 +33,7 @@ public class SimpleEVCacheTest extends Base {
     private static final Logger log = LogManager.getLogger(SimpleEVCacheTest.class);
 
     private ThreadPoolExecutor pool = null;
+    private CacheConfig cacheConfig;
 
     public static void main(String args[]) {
         SimpleEVCacheTest test = new SimpleEVCacheTest();
@@ -48,15 +52,15 @@ public class SimpleEVCacheTest extends Base {
         Logger.getLogger(EVCacheImpl.class).setLevel(Level.ERROR);
         Logger.getLogger(EVCacheClient.class).setLevel(Level.DEBUG);
         Logger.getLogger(EVCacheClientPool.class).setLevel(Level.DEBUG);
-        System.setProperty("EVCACHE.use.simple.node.list.provider", "true");
+        System.setProperty("EVCACHE.use.simple.node.list.provider", "false");
         System.setProperty("EVCACHE.EVCacheClientPool.readTimeout", "1000");
         System.setProperty("EVCACHE.operation.timeout", "100000");
         System.setProperty("EVCACHE.EVCacheClientPool.bulkReadTimeout", "10000");
-
+        
         int maxThreads = 2;
         final BlockingQueue<Runnable> queue = new LinkedBlockingQueue<Runnable>(100000);
-        pool = new ThreadPoolExecutor(maxThreads * 4, maxThreads * 4, 30, TimeUnit.SECONDS, queue);
-        pool.prestartAllCoreThreads();
+        this.pool = new ThreadPoolExecutor(maxThreads * 4, maxThreads * 4, 30, TimeUnit.SECONDS, queue);
+        this.pool.prestartAllCoreThreads();
 
     }
 
@@ -66,19 +70,20 @@ public class SimpleEVCacheTest extends Base {
     @BeforeSuite(dependsOnMethods = { "setProps" })
     public void setupClusterDetails() {
         System.setProperty("EVCACHE-NODES","evcache-useast1d-v000=100.66.36.72:11211");
-        manager = EVCacheClientPoolManager.getInstance();
+        cacheConfig = new PropertyRepoCacheConfig(new Archaius1PropertyRepo());
+        super.manager = EVCacheClientPoolManager.getInstance(cacheConfig);
     }
     
     public void testAll() {
         try {
-            EVCacheClientPoolManager.getInstance().initEVCache("EVCACHE");
+            EVCacheClientPoolManager.getInstance(cacheConfig).initEVCache("EVCACHE");
             testEVCache();
 
             boolean flag = true;
             while (flag) {
                 try {
                     testInsert();
-//                    testAppend();
+                    testAppend();
                     testGet();
                     testGetObservable();
                     testGetAndTouch();
@@ -123,15 +128,15 @@ public class SimpleEVCacheTest extends Base {
         }
     }
 
-    @Test(dependsOnMethods = { "testAppend" })
+    @Test(dependsOnMethods = { "testInsert" })
     public void testGet() throws Exception {
         for (int i = 0; i < 10; i++) {
             final String val = get(i, evCache);
-            // assertNotNull(val);
+            assertNotNull(val);
         }
     }
 
-    @Test(dependsOnMethods = { "testGet" })
+    @Test(dependsOnMethods = { "testInsert" })
     public void testGetAndTouch() throws Exception {
         for (int i = 0; i < 10; i++) {
             final String val = getAndTouch(i, evCache);
@@ -139,9 +144,9 @@ public class SimpleEVCacheTest extends Base {
         }
     }
 
-    @Test(dependsOnMethods = { "testGetAndTouch" })
+    @Test(dependsOnMethods = { "testInsert" })
     public void testBulk() throws Exception {
-        final String[] keys = new String[12];
+        final String[] keys = new String[10];
         for (int i = 0; i < keys.length; i++) {
             keys[i] = "key_" + i;
         }
@@ -153,7 +158,7 @@ public class SimpleEVCacheTest extends Base {
         }
     }
 
-    @Test(dependsOnMethods = { "testBulk" })
+    @Test(dependsOnMethods = { "testInsert" })
     public void testBulkAndTouch() throws Exception {
         final String[] keys = new String[10];
         for (int i = 0; i < 10; i++) {
@@ -167,7 +172,7 @@ public class SimpleEVCacheTest extends Base {
         }
     }
     
-    @Test(dependsOnMethods = { "testBulkAndTouch" })
+    @Test(dependsOnMethods = { "testInsert" })
     public void testReplace() throws Exception {
         for (int i = 0; i < 10; i++) {
             replace(i, evCache);

@@ -42,7 +42,8 @@ import rx.Single;
  */
 public class EVCacheBulkGetFuture<T> extends BulkGetFuture<T> {
 
-    private Logger log = LoggerFactory.getLogger(EVCacheBulkGetFuture.class);
+    private final Logger log = LoggerFactory.getLogger(EVCacheBulkGetFuture.class);
+    private final EVCacheMetricsFactory cacheMetricsFactory;
     private final Map<String, Future<T>> rvMap;
     private final Collection<Operation> ops;
     private final CountDownLatch latch;
@@ -50,8 +51,9 @@ public class EVCacheBulkGetFuture<T> extends BulkGetFuture<T> {
     private final ServerGroup serverGroup;
     private final String metricName;
 
-    public EVCacheBulkGetFuture(String appName, Map<String, Future<T>> m, Collection<Operation> getOps, CountDownLatch l, ExecutorService service, ServerGroup serverGroup, String metricName) {
+    public EVCacheBulkGetFuture(EVCacheMetricsFactory cacheMetricsFactory, String appName, Map<String, Future<T>> m, Collection<Operation> getOps, CountDownLatch l, ExecutorService service, ServerGroup serverGroup, String metricName) {
         super(m, getOps, l, service);
+        this.cacheMetricsFactory = cacheMetricsFactory;
         this.appName = appName;
         rvMap = m;
         ops = getOps;
@@ -64,7 +66,7 @@ public class EVCacheBulkGetFuture<T> extends BulkGetFuture<T> {
             throws InterruptedException, ExecutionException {
         final Collection<Operation> timedoutOps = new HashSet<Operation>();
 
-        final Stopwatch operationDuration = EVCacheMetricsFactory.getStatsTimer(appName, serverGroup, metricName).start();
+        final Stopwatch operationDuration = cacheMetricsFactory.getStatsTimer(appName, serverGroup, metricName).start();
         final long startTime = System.currentTimeMillis();
         boolean status = latch.await(to, unit);
 
@@ -86,7 +88,7 @@ public class EVCacheBulkGetFuture<T> extends BulkGetFuture<T> {
                     if (gcStartTime > startTime) {
                         gcPause = true;
                         final long gcDuration = lastGcInfo.getDuration();
-                        EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-DelayDueToGCPause", DataSourceType.COUNTER).increment(gcDuration);
+                        cacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-DelayDueToGCPause", DataSourceType.COUNTER).increment(gcDuration);
                         if (log.isDebugEnabled()) log.debug("Total duration due to gc event = " + gcDuration
                                 + " msec.");
                         break;
@@ -95,16 +97,16 @@ public class EVCacheBulkGetFuture<T> extends BulkGetFuture<T> {
             }
             if (!gcPause) {
                 long gcDuration = System.currentTimeMillis() - startTime;
-                EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-DelayProbablyDueToGCPause", DataSourceType.COUNTER).increment(gcDuration);
+                cacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-DelayProbablyDueToGCPause", DataSourceType.COUNTER).increment(gcDuration);
             }
             // redo the same op once more since there was a chance of gc pause
             if (gcPause) {
                 status = latch.await(to, unit);
                 if (log.isDebugEnabled()) log.debug("Retry status : " + status);
                 if (status) {
-                    EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-DelayDueToGCPause-Success", DataSourceType.COUNTER).increment();
+                	cacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-DelayDueToGCPause-Success", DataSourceType.COUNTER).increment();
                 } else {
-                    EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-DelayDueToGCPause-Fail", DataSourceType.COUNTER).increment();
+                	cacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-DelayDueToGCPause-Fail", DataSourceType.COUNTER).increment();
                 }
             }
             if (log.isDebugEnabled()) log.debug("Total duration due to gc event = " + (System.currentTimeMillis()
@@ -124,11 +126,11 @@ public class EVCacheBulkGetFuture<T> extends BulkGetFuture<T> {
             }
         }
 
-        if (!status && !hasZF && timedoutOps.size() > 0) EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-getSome-CheckedOperationTimeout", DataSourceType.COUNTER).increment();
+        if (!status && !hasZF && timedoutOps.size() > 0) cacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-getSome-CheckedOperationTimeout", DataSourceType.COUNTER).increment();
 
         for (Operation op : ops) {
             if(op.isCancelled()) {
-                if (hasZF) EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-getSome-Cancelled", DataSourceType.COUNTER).increment();
+                if (hasZF) cacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-getSome-Cancelled", DataSourceType.COUNTER).increment();
                 if (throwException) throw new ExecutionException(new CancellationException("Cancelled"));
             }
             if (op.hasErrored() && throwException) throw new ExecutionException(op.getException());
@@ -154,7 +156,7 @@ public class EVCacheBulkGetFuture<T> extends BulkGetFuture<T> {
     }
 
     public Single<Map<String, T>> getSome(long to, TimeUnit units, boolean throwException, boolean hasZF, Scheduler scheduler) {
-        final Stopwatch operationDuration = EVCacheMetricsFactory.getStatsTimer(appName, serverGroup, metricName).start();
+        final Stopwatch operationDuration = cacheMetricsFactory.getStatsTimer(appName, serverGroup, metricName).start();
         return observe().timeout(to, units, Single.create(subscriber -> {
             try {
                 final Collection<Operation> timedoutOps = new HashSet<Operation>();
@@ -167,7 +169,7 @@ public class EVCacheBulkGetFuture<T> extends BulkGetFuture<T> {
                     }
                 }
 
-                if (!hasZF && timedoutOps.size() > 0) EVCacheMetricsFactory.increment(appName + "-getSome-CheckedOperationTimeout");
+                if (!hasZF && timedoutOps.size() > 0) cacheMetricsFactory.increment(appName + "-getSome-CheckedOperationTimeout");
 
                 for (Operation op : ops) {
                     if (op.isCancelled() && throwException) throw new ExecutionException(new CancellationException("Cancelled"));

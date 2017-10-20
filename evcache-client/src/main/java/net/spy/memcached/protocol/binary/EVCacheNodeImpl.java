@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
@@ -17,10 +18,8 @@ import javax.management.ObjectName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.netflix.config.DynamicBooleanProperty;
 import com.netflix.evcache.metrics.EVCacheMetricsFactory;
 import com.netflix.evcache.pool.ServerGroup;
-import com.netflix.evcache.util.EVCacheConfig;
 import com.netflix.servo.annotations.DataSourceType;
 import com.netflix.servo.monitor.BasicCounter;
 import com.netflix.servo.monitor.CompositeMonitor;
@@ -53,26 +52,28 @@ public class EVCacheNodeImpl extends BinaryMemcachedNodeImpl implements EVCacheN
     protected final BlockingQueue<Operation> readQ;
     protected final BlockingQueue<Operation> inputQueue;
     protected final String metricPrefix;
-    protected final DynamicBooleanProperty sendMetrics;
+    protected final Supplier<Boolean> sendMetrics;
     protected final MonitorConfig baseConfig;
     protected final TagList baseTags;
 	protected final TagList tags;
+	protected final EVCacheMetricsFactory cacheMetricsFactory;
 
     private long timeoutStartTime;
 
-    public EVCacheNodeImpl(SocketAddress sa, SocketChannel c, int bufSize, BlockingQueue<Operation> rq,
+    public EVCacheNodeImpl(EVCacheMetricsFactory cacheMetricsFactory, SocketAddress sa, SocketChannel c, int bufSize, BlockingQueue<Operation> rq,
             BlockingQueue<Operation> wq, BlockingQueue<Operation> iq,
             long opQueueMaxBlockTimeMillis, boolean waitForAuth, long dt, long at, ConnectionFactory fa, String appName,
-            int id, ServerGroup serverGroup, long stTime) {
+            int id, ServerGroup serverGroup, long stTime, Supplier<Boolean> sendMetrics) {
         super(sa, c, bufSize, rq, wq, iq, Long.valueOf(opQueueMaxBlockTimeMillis), waitForAuth, dt, at, fa);
 
+        this.cacheMetricsFactory = cacheMetricsFactory;
         this.id = id;
         this._appName = appName;
         this._serverGroup = serverGroup;
         setConnectTime(stTime);
         this.readQ = rq;
         this.inputQueue = iq;
-        this.sendMetrics = EVCacheConfig.getInstance().getDynamicBooleanProperty("EVCacheNodeImpl." + appName + ".sendMetrics", false);
+        this.sendMetrics = sendMetrics;
         this.tags = BasicTagList.of("ServerGroup", _serverGroup.getName(), "APP", appName, "Id", String.valueOf(id), EVCacheMetricsFactory.OWNER.getKey(), EVCacheMetricsFactory.OWNER.getValue());
         this.hostName = ((InetSocketAddress) getSocketAddress()).getHostName();
         this.metricPrefix = "EVCacheNode";
@@ -194,26 +195,26 @@ public class EVCacheNodeImpl extends BinaryMemcachedNodeImpl implements EVCacheN
         try {
             final List<Monitor<?>> metrics = new ArrayList<Monitor<?>>();
             if(getContinuousTimeout() > 0) {
-                MonitorConfig monitorConfig = EVCacheConfig.getInstance().getMonitorConfig(metricPrefix + "_ContinuousTimeout", DataSourceType.GAUGE, baseTags);
+                MonitorConfig monitorConfig = cacheMetricsFactory.getMonitorConfig(metricPrefix + "_ContinuousTimeout", DataSourceType.GAUGE, baseTags);
                 final LongGauge cTimeouts = new LongGauge(monitorConfig);
                 cTimeouts.set(Long.valueOf(getContinuousTimeout()));
                 metrics.add(cTimeouts);
             }
 
             if (sendMetrics.get()) {
-                MonitorConfig monitorConfig = EVCacheConfig.getInstance().getMonitorConfig(metricPrefix + "_WriteQ",
+                MonitorConfig monitorConfig = cacheMetricsFactory.getMonitorConfig(metricPrefix + "_WriteQ",
                         DataSourceType.GAUGE, baseTags);
                 final LongGauge wQueue = new LongGauge(monitorConfig);
                 wQueue.set(Long.valueOf(writeQ.size()));
                 metrics.add(wQueue);
 
-                monitorConfig = EVCacheConfig.getInstance().getMonitorConfig(metricPrefix + "_ReadQ", DataSourceType.GAUGE,
+                monitorConfig = cacheMetricsFactory.getMonitorConfig(metricPrefix + "_ReadQ", DataSourceType.GAUGE,
                         baseTags);
                 final LongGauge rQueue = new LongGauge(monitorConfig);
                 rQueue.set(Long.valueOf(readQ.size()));
                 metrics.add(rQueue);
 
-                monitorConfig = EVCacheConfig.getInstance().getMonitorConfig(metricPrefix + "_NumOfOps",
+                monitorConfig = cacheMetricsFactory.getMonitorConfig(metricPrefix + "_NumOfOps",
                         DataSourceType.COUNTER, baseTags);
                 final BasicCounter counter = new BasicCounter(monitorConfig);
                 counter.increment(opCount.get());

@@ -11,6 +11,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.netflix.evcache.EVCacheLatch.Policy;
+import com.netflix.evcache.config.Archaius1PropertyRepo;
+import com.netflix.evcache.config.CacheConfig;
+import com.netflix.evcache.config.PropertyRepoCacheConfig;
 import com.netflix.evcache.pool.EVCacheClientPoolManager;
 
 import net.spy.memcached.transcoders.Transcoder;
@@ -1142,11 +1145,12 @@ public interface EVCache {
         @SuppressWarnings("deprecation")
         public EVCache build() {
             if (_poolManager == null) {
-                _poolManager = EVCacheClientPoolManager.getInstance();
+            	CacheConfig cacheConfig = new PropertyRepoCacheConfig(new Archaius1PropertyRepo());
+                _poolManager = EVCacheClientPoolManager.getInstance(cacheConfig);
                 if (log.isDebugEnabled()) log.debug("_poolManager - " + _poolManager + " through getInstance");
             }
             if (_appName == null) throw new IllegalArgumentException("param appName cannot be null.");
-            final EVCacheImpl cache = new EVCacheImpl(_appName, _cachePrefix, _ttl, _transcoder, _serverGroupRetry,
+            final EVCacheImpl cache = new EVCacheImpl(_poolManager.getCacheConfig(), _appName, _cachePrefix, _ttl, _transcoder, _serverGroupRetry,
                     _enableExceptionThrowing, _poolManager);
             return cache;
         }

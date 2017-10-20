@@ -14,7 +14,6 @@ import javax.management.ObjectName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.netflix.appinfo.ApplicationInfoManager;
 import com.netflix.appinfo.InstanceInfo;
 import com.netflix.evcache.metrics.EVCacheMetricsFactory;
 import com.netflix.evcache.pool.ServerGroup;
@@ -27,6 +26,7 @@ import net.spy.memcached.ConnectionObserver;
 public class EVCacheConnectionObserver implements ConnectionObserver, EVCacheConnectionObserverMBean {
 
     private static final Logger log = LoggerFactory.getLogger(EVCacheConnectionObserver.class);
+    private final EVCacheMetricsFactory cacheMetricsFactory;
     private final InstanceInfo instanceInfo;
     private final String appName;
     private final ServerGroup serverGroup;
@@ -40,9 +40,9 @@ public class EVCacheConnectionObserver implements ConnectionObserver, EVCacheCon
 
     private final String monitorName;
 
-    @SuppressWarnings("deprecation")
-    public EVCacheConnectionObserver(String appName, ServerGroup serverGroup, int id) {
-        this.instanceInfo = ApplicationInfoManager.getInstance().getInfo();
+    public EVCacheConnectionObserver(EVCacheMetricsFactory cacheMetricsFactory, String appName, ServerGroup serverGroup, InstanceInfo instanceInfo, int id) {
+    	this.cacheMetricsFactory = cacheMetricsFactory;
+        this.instanceInfo = instanceInfo;
         this.appName = appName;
         this.serverGroup = serverGroup;
         this.evCacheActiveSet = Collections.newSetFromMap(new ConcurrentHashMap<SocketAddress, Boolean>());
@@ -67,7 +67,7 @@ public class EVCacheConnectionObserver implements ConnectionObserver, EVCacheCon
                     + " to " + address + " was established after " + reconnectCount + " retries");
         }
         if(log.isTraceEnabled()) log.trace("Stack", new Exception());
-        EVCacheMetricsFactory.increment(appName, null, serverGroup.getName(), appName + "-CONNECT");
+        cacheMetricsFactory.increment(appName, null, serverGroup.getName(), appName + "-CONNECT");
         connectCount++;
     }
 
@@ -83,7 +83,7 @@ public class EVCacheConnectionObserver implements ConnectionObserver, EVCacheCon
         }
         if(log.isTraceEnabled()) log.trace("Stack", new Exception());
         final Tag tag = new BasicTag("HOST", inetAdd.getAddress().getHostAddress());
-        EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-CONNECTION_LOST", tag).increment();
+        cacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-CONNECTION_LOST", tag).increment();
         lostCount++;
     }
 

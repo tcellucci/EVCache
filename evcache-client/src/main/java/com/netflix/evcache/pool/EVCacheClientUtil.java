@@ -9,18 +9,16 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.netflix.config.DynamicBooleanProperty;
-import com.netflix.config.DynamicIntProperty;
 import com.netflix.evcache.EVCacheLatch;
 import com.netflix.evcache.EVCacheLatch.Policy;
-import com.netflix.evcache.metrics.EVCacheMetricsFactory;
+import com.netflix.evcache.config.CacheConfig;
 import com.netflix.evcache.operation.EVCacheLatchImpl;
 import com.netflix.evcache.operation.EVCacheOperationFuture;
-import com.netflix.evcache.util.EVCacheConfig;
 import com.netflix.servo.DefaultMonitorRegistry;
 import com.netflix.servo.monitor.CompositeMonitor;
 import com.netflix.servo.monitor.Monitors;
@@ -36,22 +34,22 @@ public class EVCacheClientUtil {
     private final String _appName;
     private final DistributionSummary addDataSizeSummary;
     private final DistributionSummary addTTLSummary;
-    private final DynamicBooleanProperty fixup;
-    private final DynamicIntProperty fixupPoolSize;
+    private final Supplier<Boolean> fixup;
+    private final Supplier<Integer> fixupPoolSize;
     private final EVCacheClientPool _pool;
     private ThreadPoolExecutor threadPool = null;
 
-    public EVCacheClientUtil(EVCacheClientPool pool) {
+    public EVCacheClientUtil(CacheConfig cacheConfig, EVCacheClientPool pool) {
         this._pool = pool;
         this._appName = pool.getAppName();
-        this.addDataSizeSummary = EVCacheMetricsFactory.getDistributionSummary(_appName + "-AddData-Size", _appName, null);
-        this.addTTLSummary = EVCacheMetricsFactory.getDistributionSummary(_appName + "-AddData-TTL", _appName, null);
-        this.fixup = EVCacheConfig.getInstance().getDynamicBooleanProperty(_appName + ".addOperation.fixup", Boolean.FALSE);
-        this.fixupPoolSize = EVCacheConfig.getInstance().getDynamicIntProperty(_appName + ".addOperation.fixup.poolsize", 10);
+        this.addDataSizeSummary = pool.getCacheMetricsFactory().getDistributionSummary(_appName + "-AddData-Size", _appName, null);
+        this.addTTLSummary = pool.getCacheMetricsFactory().getDistributionSummary(_appName + "-AddData-TTL", _appName, null);
+        this.fixup = cacheConfig.getClusterConfig(pool.getAppName()).isAddOperationFixup(Boolean.FALSE);
+        this.fixupPoolSize = cacheConfig.getClusterConfig(pool.getAppName()).getAddOperationFixupPoolSize(10);
 
         RejectedExecutionHandler block = new RejectedExecutionHandler() {
             public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
-                EVCacheMetricsFactory.increment(_appName , null, null, _appName + "-AddCall-FixUp-REJECTED");
+            	pool.getCacheMetricsFactory().increment(_appName , null, null, _appName + "-AddCall-FixUp-REJECTED");
             }
         };
         
@@ -77,7 +75,7 @@ public class EVCacheClientUtil {
         addTTLSummary.record(timeToLive);
         
         final EVCacheClient[] clients = _pool.getEVCacheClientForWrite();
-        final EVCacheLatchImpl latch = new EVCacheLatchImpl(policy, clients.length - _pool.getWriteOnlyEVCacheClients().length, _appName){
+        final EVCacheLatchImpl latch = new EVCacheLatchImpl(_pool.getCacheMetricsFactory(), policy, clients.length - _pool.getWriteOnlyEVCacheClients().length, _appName){
 
             @Override
             public void onComplete(OperationFuture<?> operationFuture) throws Exception {
@@ -158,7 +156,7 @@ public class EVCacheClientUtil {
                                     try {
                                         client.set(canonicalKey, readData, timeToLive, null);
                                         if(log.isDebugEnabled()) log.debug("Add: Fixup for : APP " + _appName + ", key " + canonicalKey + "; ServerGroup : " + client.getServerGroupName());
-                                        EVCacheMetricsFactory.increment(_appName , null, client.getServerGroupName(), _appName + "-AddCall-FixUp");
+                                        _pool.getCacheMetricsFactory().increment(_appName , null, client.getServerGroupName(), _appName + "-AddCall-FixUp");
                                     } catch (Exception e) {
                                         if(log.isDebugEnabled()) log.debug("Add: Fixup Error : APP " + _appName + ", key " + canonicalKey + "; ServerGroup : " + client.getServerGroupName(), e);
                                     }
