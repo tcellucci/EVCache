@@ -265,7 +265,7 @@ public class EVCacheTestDI extends Base implements EVCacheGetOperationListener<S
             if (log.isDebugEnabled()) log.debug("All Done!!!. Will exit.");
             System.exit(0);
         } catch (Exception e) {
-        	e.printStackTrace();
+            e.printStackTrace();
             log.error(e.getMessage(), e);
         }
     }

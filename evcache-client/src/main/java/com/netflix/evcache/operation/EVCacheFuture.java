@@ -21,7 +21,7 @@ public class EVCacheFuture implements Future<Boolean> {
     private final EVCacheClient client;
 
     public EVCacheFuture(Future<Boolean> future, String key, String app, ServerGroup serverGroup) {
-    	this(future, key, app, serverGroup, null);
+        this(future, key, app, serverGroup, null);
     }
 
     public EVCacheFuture(Future<Boolean> future, String key, String app, ServerGroup serverGroup, EVCacheClient client) {

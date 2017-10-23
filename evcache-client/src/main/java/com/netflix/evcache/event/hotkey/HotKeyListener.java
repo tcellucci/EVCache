@@ -56,7 +56,7 @@ public class HotKeyListener implements EVCacheEventListener {
 
     @Inject
     public HotKeyListener(CacheConfig cacheConfig, EVCacheClientPoolManager poolManager) {
-    	this.cacheConfig = cacheConfig;
+        this.cacheConfig = cacheConfig;
         this.poolManager = poolManager;
         this.throttleMap = new ConcurrentHashMap<>();
         cacheMap = new ConcurrentHashMap<String, Cache<String, Integer>>();
@@ -78,7 +78,7 @@ public class HotKeyListener implements EVCacheEventListener {
 
     private Cache<String, Integer> getCache(String appName) {
         ThrottlerConfig throttlerConfig = cacheConfig.getClusterConfig(appName).getThrottlerConfig();
-		boolean throttleFlag = throttlerConfig.isEnableThrottleHotKeys().get();
+        boolean throttleFlag = throttlerConfig.isEnableThrottleHotKeys().get();
         if(log.isDebugEnabled()) log.debug("Throttle hot keys : " + throttleFlag);
         if(!throttleFlag) {
             return null;
@@ -125,7 +125,7 @@ public class HotKeyListener implements EVCacheEventListener {
 
         final String appName = e.getAppName();
         ThrottlerConfig throttlerConfig = cacheConfig.getClusterConfig(appName).getThrottlerConfig();
-		Set<String> throttleKeysSet = throttlerConfig.getThrottleKeys().get();
+        Set<String> throttleKeysSet = throttlerConfig.getThrottleKeys().get();
         if(!throttleKeysSet.isEmpty()) {
             if(log.isDebugEnabled()) log.debug("Throttle : " + throttleKeysSet);
             for(String key : e.getKeys()) {

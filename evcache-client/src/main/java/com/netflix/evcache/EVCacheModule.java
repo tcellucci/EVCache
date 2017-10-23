@@ -1,12 +1,9 @@
 package com.netflix.evcache;
 
-import java.util.Optional;
-
 import javax.inject.Singleton;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
-import com.google.inject.Scopes;
 import com.google.inject.multibindings.MultibindingsScanner;
 import com.google.inject.multibindings.OptionalBinder;
 import com.google.inject.multibindings.ProvidesIntoOptional;
@@ -35,38 +32,37 @@ public class EVCacheModule extends AbstractModule {
 
     @Override
     protected void configure() {
-    	install(MultibindingsScanner.asModule());
-    	OptionalBinder.newOptionalBinder(binder(), PropertyRepo.class);
+        install(MultibindingsScanner.asModule());
+        OptionalBinder.newOptionalBinder(binder(), PropertyRepo.class);
         bind(EVCacheModuleConfigLoader.class).asEagerSingleton();
         bind(EVCacheClientPoolManager.class).asEagerSingleton();
         
         bind(HotKeyListener.class).asEagerSingleton();
         bind(ThrottleListener.class).asEagerSingleton();
-        
 
         // Make sure connection factory provider Module is initialized in your Module when you init EVCacheModule 
         // bind(IConnectionFactoryProvider.class).toProvider(DefaultFactoryProvider.class);
     }
     
-	/**
-	 *  by default, bind to an Archaius 1 property repo 
-	 */
+    /**
+     *  by default, bind to an Archaius 1 property repo 
+     */
     @ProvidesIntoOptional(Type.DEFAULT)
     @Singleton
     public PropertyRepo archaius1PropertyRepo() {
-    	return new Archaius1PropertyRepo();
+        return new Archaius1PropertyRepo();
     }
  
     @Provides
     @Singleton
     public CacheConfig propertyRepoCacheConfig(com.google.common.base.Optional<PropertyRepo> propertyRepo) {
-    	return new PropertyRepoCacheConfig(propertyRepo.get());
+        return new PropertyRepoCacheConfig(propertyRepo.get());
     }
     
     @Provides
     @Singleton
     public EVCacheMetricsFactory cacheMetricsFactory(CacheConfig cacheConfig) {
-    	return new EVCacheMetricsFactory(cacheConfig.getMetricsSampleSize());
+        return new EVCacheMetricsFactory(cacheConfig.getMetricsSampleSize());
     }
 
     @Override

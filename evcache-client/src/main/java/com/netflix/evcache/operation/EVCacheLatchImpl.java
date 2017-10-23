@@ -43,7 +43,7 @@ public class EVCacheLatchImpl implements EVCacheLatch, Runnable {
     private final long startTimeMS;
 
     public EVCacheLatchImpl(EVCacheMetricsFactory cacheMetricsFactory, Policy policy, int _count, String appName) {
-    	this.cacheMetricsFactory = cacheMetricsFactory;
+        this.cacheMetricsFactory = cacheMetricsFactory;
         this.policy = policy;
         this.futures = new ArrayList<Future<Boolean>>(_count);
         this.appName = appName;

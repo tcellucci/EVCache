@@ -95,12 +95,12 @@ public abstract class Base  {
     @AfterSuite
     public void shutdownEnv() {
         if (lifecycleManager != null) {
-        	try {
-				lifecycleManager.close();
-			} catch (Exception e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
+            try {
+                lifecycleManager.close();
+            } catch (Exception e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
         }
     }
 

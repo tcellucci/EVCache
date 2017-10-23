@@ -131,10 +131,10 @@ public class EVCacheClientPoolManager {
     public static EVCacheClientPoolManager getInstance(CacheConfig cacheConfig) {
         if (instance == null) {
             new EVCacheClientPoolManager(cacheConfig, null, null, 
-            		new EVCacheMetricsFactory(cacheConfig.getMetricsSampleSize()), 
-            		new DefaultFactoryProvider(cacheConfig));
+                    new EVCacheMetricsFactory(cacheConfig.getMetricsSampleSize()), 
+                    new DefaultFactoryProvider(cacheConfig));
             Supplier<Boolean> useSimpleNodeListProvider = cacheConfig.isUseSimpleNodeListProvider();
-			if (!useSimpleNodeListProvider.get()) {
+            if (!useSimpleNodeListProvider.get()) {
                 log.warn("Please make sure EVCacheClientPoolManager is injected first. This is not the appropriate way to init EVCacheClientPoolManager."
                         + " If you are using simple node list provider please set evcache.use.simple.node.list.provider property to true.", new Exception());
             }
@@ -276,12 +276,12 @@ public class EVCacheClientPoolManager {
         return (EVCacheInMemoryCache<T>) inMemoryMap.get(appName);
     }
 
-	public EVCacheMetricsFactory getCacheMetricsFactory() {
-		return cacheMetricsFactory;
-	}
+    public EVCacheMetricsFactory getCacheMetricsFactory() {
+        return cacheMetricsFactory;
+    }
 
-	public CacheConfig getCacheConfig() {
-		return cacheConfig;
-	}
+    public CacheConfig getCacheConfig() {
+        return cacheConfig;
+    }
 
 }

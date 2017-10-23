@@ -106,8 +106,8 @@ public class EVCacheClientPool implements Runnable, EVCacheClientPoolMBean {
     private final CacheConfig cacheConfig;
 
     EVCacheClientPool(CacheConfig cacheConfig, final String appName, final EVCacheNodeList provider, final ThreadPoolExecutor asyncRefreshExecutor, final EVCacheClientPoolManager manager) {
-    	this.cacheConfig = cacheConfig;
-    	ClusterConfig clusterConfig = cacheConfig.getClusterConfig(appName);
+        this.cacheConfig = cacheConfig;
+        ClusterConfig clusterConfig = cacheConfig.getClusterConfig(appName);
         this._appName = appName;
         this.provider = provider;
         this.asyncRefreshExecutor = asyncRefreshExecutor;
@@ -124,12 +124,12 @@ public class EVCacheClientPool implements Runnable, EVCacheClientPoolMBean {
             }
         }; 
         ClientPoolConfig clientPoolConfig = clusterConfig.getClientPoolConfig();
-		this._poolSize = clientPoolConfig.getPoolSize();
-		cacheConfig.addCallback(_poolSize, callback);
+        this._poolSize = clientPoolConfig.getPoolSize();
+        cacheConfig.addCallback(_poolSize, callback);
         this._readTimeout = clientPoolConfig.getReadTimeout();
-		cacheConfig.addCallback(_readTimeout, callback);
+        cacheConfig.addCallback(_readTimeout, callback);
         this._bulkReadTimeout = clientPoolConfig.getBulkReadTimeout(_readTimeout);
-		cacheConfig.addCallback(_bulkReadTimeout, callback);
+        cacheConfig.addCallback(_bulkReadTimeout, callback);
 
         this.refreshConnectionOnReadQueueFull = clientPoolConfig.isRefreshConnectionOnReadQueueFull();
         this.refreshConnectionOnReadQueueFullSize = clientPoolConfig.getRefreshConnectionOnReadQueueFullSize();
@@ -160,9 +160,9 @@ public class EVCacheClientPool implements Runnable, EVCacheClientPoolMBean {
     }
 
     private void setupClones() {
-    	for(String cloneApp : cloneWrite.get()) {
-    		manager.initEVCache(cloneApp);
-    	}
+        for(String cloneApp : cloneWrite.get()) {
+            manager.initEVCache(cloneApp);
+        }
     }
 
     private void clearState() {
@@ -544,9 +544,9 @@ public class EVCacheClientPool implements Runnable, EVCacheClientPoolMBean {
         return false;
     }
 
-	public EVCacheMetricsFactory getCacheMetricsFactory() {
-		return manager.getCacheMetricsFactory();
-	}
+    public EVCacheMetricsFactory getCacheMetricsFactory() {
+        return manager.getCacheMetricsFactory();
+    }
 
     private List<InetSocketAddress> getMemcachedSocketAddressList(final Set<InetSocketAddress> discoveredHostsInZone) {
         final List<InetSocketAddress> memcachedNodesInZone = new ArrayList<InetSocketAddress>();
@@ -624,12 +624,12 @@ public class EVCacheClientPool implements Runnable, EVCacheClientPoolMBean {
             final Supplier<Boolean> isZoneInWriteOnlyMode = writeOnlyFastPropertyMap.get(serverGroup);
             if (isZoneInWriteOnlyMode.get().booleanValue()) {
                 if (memcachedReadInstancesByServerGroup.containsKey(serverGroup)) {
-                	getCacheMetricsFactory().increment(_appName, null, serverGroup.getName(), _appName + "-" + serverGroup.getName() + "-WRITE_ONLY");
+                    getCacheMetricsFactory().increment(_appName, null, serverGroup.getName(), _appName + "-" + serverGroup.getName() + "-WRITE_ONLY");
                     memcachedReadInstancesByServerGroup.remove(serverGroup);
                 }
             } else {
                 if (!memcachedReadInstancesByServerGroup.containsKey(serverGroup)) {
-                	getCacheMetricsFactory().increment(_appName, null, serverGroup.getName(), _appName + "-" + serverGroup.getName() + "-READ_ENABLED");
+                    getCacheMetricsFactory().increment(_appName, null, serverGroup.getName(), _appName + "-" + serverGroup.getName() + "-READ_ENABLED");
                     memcachedReadInstancesByServerGroup.put(serverGroup, memcachedInstancesByServerGroup.get(serverGroup));
                 }
             }
@@ -775,7 +775,7 @@ public class EVCacheClientPool implements Runnable, EVCacheClientPoolMBean {
                         EVCacheClient client;
                         try {
                             client = new EVCacheClient(cacheConfig, getCacheMetricsFactory(), _appName, zone, i, config, memcachedSAInServerGroup, maxQueueSize, 
-                            		_maxReadQueueSize, _readTimeout, _bulkReadTimeout, _opQueueMaxBlockTime, _operationTimeout, this);
+                                    _maxReadQueueSize, _readTimeout, _bulkReadTimeout, _opQueueMaxBlockTime, _operationTimeout, this);
                             newClients.add(client);
                             final int id = client.getId();
                             if (log.isDebugEnabled()) log.debug("AppName :" + _appName + "; ServerGroup : " + serverGroup + "; intit : client.getId() : " + id);
@@ -826,12 +826,12 @@ public class EVCacheClientPool implements Runnable, EVCacheClientPoolMBean {
                 for (ServerGroup serverGroup : memcachedWriteInstancesByServerGroup.keySet()) {
                     final List<EVCacheClient> clients = memcachedWriteInstancesByServerGroup.get(serverGroup);
                     if(clients.size() > ind) {
-                    	clientArr[i++] = clients.get(ind); // frequently used usecase
+                        clientArr[i++] = clients.get(ind); // frequently used usecase
                     } else {
-                    	log.warn("Incorrect pool size detected for AppName : " + _appName + "; PoolSize " + _poolSize.get() + "; serverGroup : " + serverGroup + "; ind : " + ind + "; i : " + i);
-                    	if(clients.size() > 0) {
-                    		clientArr[i++] = clients.get(0);
-                    	}
+                        log.warn("Incorrect pool size detected for AppName : " + _appName + "; PoolSize " + _poolSize.get() + "; serverGroup : " + serverGroup + "; ind : " + ind + "; i : " + i);
+                        if(clients.size() > 0) {
+                            clientArr[i++] = clients.get(0);
+                        }
                     }
                 }
                 newClients.add(clientArr);

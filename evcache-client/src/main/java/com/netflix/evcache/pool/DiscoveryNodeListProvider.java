@@ -41,7 +41,7 @@ public class DiscoveryNodeListProvider implements EVCacheNodeList {
 
     public DiscoveryNodeListProvider(CacheConfig cacheConfig, ApplicationInfoManager applicationInfoManager, DiscoveryClient discoveryClient, EVCacheMetricsFactory cacheMetricsFactory,
             String appName) {
-    	this.useRendBatchPortMap = new ConcurrentHashMap<>();
+        this.useRendBatchPortMap = new ConcurrentHashMap<>();
         this.applicationInfoManager = applicationInfoManager;
         this._discoveryClient = discoveryClient;
         this.cacheMetricsFactory = cacheMetricsFactory;
@@ -94,7 +94,7 @@ public class DiscoveryNodeListProvider implements EVCacheNodeList {
             }
             final String asgName = iInfo.getASGName();
             if(asgName == null) {
-            	cacheMetricsFactory.increment(_appName, null, "EVCacheClient-DiscoveryNodeListProvider-NULL_SERVER_GROUP");
+                cacheMetricsFactory.increment(_appName, null, "EVCacheClient-DiscoveryNodeListProvider-NULL_SERVER_GROUP");
                 continue;
             }
 

@@ -176,7 +176,7 @@ public class EVCacheNodeLocator implements NodeLocator {
             // Ketama does some special work with md5 where it reuses chunks.
             if (hashingAlgorithm == DefaultHashAlgorithm.KETAMA_HASH) {
                 for (int i = 0; i < numReps / 4; i++) {
-                	final String hashString = config.getKeyForNode(node, i);
+                    final String hashString = config.getKeyForNode(node, i);
                     byte[] digest = DefaultHashAlgorithm.computeMd5(hashString);
                     if (log.isDebugEnabled()) log.debug("digest : " + digest);
                     for (int h = 0; h < 4; h++) {
@@ -209,11 +209,11 @@ public class EVCacheNodeLocator implements NodeLocator {
         setKetamaNodes(nodes);
     }
 
-	@Override
-	public String toString() {
-		return "EVCacheNodeLocator [ketamaNodes=" + ketamaNodes + ", appName=" + appName + ", serverGroup="
-				+ serverGroup + ", partialStringHash=" + partialStringHash + ", hashDelimiter=" + hashDelimiter
-				+ ", allNodes=" + allNodes + ", hashingAlgorithm=" + hashingAlgorithm + ", config=" + config + "]";
-	}
+    @Override
+    public String toString() {
+        return "EVCacheNodeLocator [ketamaNodes=" + ketamaNodes + ", appName=" + appName + ", serverGroup="
+                + serverGroup + ", partialStringHash=" + partialStringHash + ", hashDelimiter=" + hashDelimiter
+                + ", allNodes=" + allNodes + ", hashingAlgorithm=" + hashingAlgorithm + ", config=" + config + "]";
+    }
 
 }

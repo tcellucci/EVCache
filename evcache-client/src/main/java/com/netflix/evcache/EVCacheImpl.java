@@ -85,7 +85,7 @@ final public class EVCacheImpl implements EVCache {
 
     EVCacheImpl(CacheConfig cacheConfig, String appName, String cacheName, int timeToLive, Transcoder<?> transcoder, boolean enableZoneFallback,
             boolean throwException, EVCacheClientPoolManager poolManager) {
-    	this.cacheConfig = cacheConfig;
+        this.cacheConfig = cacheConfig;
         this._appName = appName;
         this._cacheName = cacheName;
         this._timeToLive = timeToLive;
@@ -246,7 +246,7 @@ final public class EVCacheImpl implements EVCache {
 
         final EVCacheEvent event = createEVCacheEvent(Collections.singletonList(client), Collections.singletonList(canonicalKey), Call.GET);
         if (event != null) {
-        	event.setCanonicalKeys(Arrays.asList(canonicalKey));
+            event.setCanonicalKeys(Arrays.asList(canonicalKey));
             try {
                 if (shouldThrottle(event)) {
                     increment("THROTTLED");
@@ -340,7 +340,7 @@ final public class EVCacheImpl implements EVCache {
         final String canonicalKey = getCanonicalizedKey(key);
         final EVCacheEvent event = createEVCacheEvent(Collections.singletonList(client), Collections.singletonList(key), Call.GET);
         if (event != null) {
-        	event.setCanonicalKeys(Arrays.asList(canonicalKey));
+            event.setCanonicalKeys(Arrays.asList(canonicalKey));
             try {
                 if (shouldThrottle(event)) {
                     increment("THROTTLED");
@@ -470,7 +470,7 @@ final public class EVCacheImpl implements EVCache {
         final String canonicalKey = getCanonicalizedKey(key);
         final EVCacheEvent event = createEVCacheEvent(Collections.singletonList(client), Collections.singletonList(key), Call.GET_AND_TOUCH);
         if (event != null) {
-        	event.setCanonicalKeys(Arrays.asList(canonicalKey));
+            event.setCanonicalKeys(Arrays.asList(canonicalKey));
             try {
                 if (shouldThrottle(event)) {
                     increment("THROTTLED");
@@ -578,7 +578,7 @@ final public class EVCacheImpl implements EVCache {
 
         final EVCacheEvent event = createEVCacheEvent(Collections.singletonList(client), Collections.singletonList(canonicalKey), Call.GET_AND_TOUCH);
         if (event != null) {
-        	event.setCanonicalKeys(Arrays.asList(canonicalKey));
+            event.setCanonicalKeys(Arrays.asList(canonicalKey));
             try {
                 if (shouldThrottle(event)) {
                     increment("THROTTLED");
@@ -780,7 +780,7 @@ final public class EVCacheImpl implements EVCache {
         final EVCacheEvent event = createEVCacheEvent(Collections.singletonList(client), Collections.singletonList(key),
                 Call.ASYNC_GET);
         if (event != null) {
-        	event.setCanonicalKeys(Arrays.asList(canonicalKey));
+            event.setCanonicalKeys(Arrays.asList(canonicalKey));
             try {
                 if (shouldThrottle(event)) {
                     increment("THROTTLED");
@@ -856,7 +856,7 @@ final public class EVCacheImpl implements EVCache {
         }
         final EVCacheEvent event = createEVCacheEvent(Collections.singletonList(client), keys, Call.BULK);
         if (event != null) {
-        	event.setCanonicalKeys(canonicalKeys);
+            event.setCanonicalKeys(canonicalKeys);
             try {
                 if (shouldThrottle(event)) {
                     increment("THROTTLED");
@@ -1337,7 +1337,7 @@ final public class EVCacheImpl implements EVCache {
         final EVCacheEvent event = createEVCacheEvent(Arrays.asList(clients), Collections.singletonList(key),
                 Call.INCR);
         if (event != null) {
-        	event.setCanonicalKeys(Arrays.asList(canonicalKey));
+            event.setCanonicalKeys(Arrays.asList(canonicalKey));
             try {
                 if (shouldThrottle(event)) {
                     increment("THROTTLED");
@@ -1407,7 +1407,7 @@ final public class EVCacheImpl implements EVCache {
         final EVCacheEvent event = createEVCacheEvent(Arrays.asList(clients), Collections.singletonList(key),
                 Call.DECR);
         if (event != null) {
-        	event.setCanonicalKeys(Arrays.asList(canonicalKey));
+            event.setCanonicalKeys(Arrays.asList(canonicalKey));
             try {
                 if (shouldThrottle(event)) {
                     increment("THROTTLED");
@@ -1813,7 +1813,7 @@ final public class EVCacheImpl implements EVCache {
         }
     }
 
-	public CacheConfig getCacheConfig() {
-		return cacheConfig;
-	}
+    public CacheConfig getCacheConfig() {
+        return cacheConfig;
+    }
 }

@@ -159,7 +159,7 @@ public class EVCacheOperationFuture<T> extends OperationFuture<T> {
                 final long gcDuration = System.currentTimeMillis() - startTime;
                 gcPause = (gcDuration > units.toMillis(duration) + 10);
                 if (gcPause) {
-                	cacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-DelayProbablyDueToGCPause", DataSourceType.COUNTER).increment(gcDuration);
+                    cacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-DelayProbablyDueToGCPause", DataSourceType.COUNTER).increment(gcDuration);
                 }
             }
             // redo the same op once more since there was a chance of gc pause
@@ -168,9 +168,9 @@ public class EVCacheOperationFuture<T> extends OperationFuture<T> {
                 if (log.isDebugEnabled()) log.debug("Retry status : " + status);
 
                 if (status) {
-                	cacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-DelayDueToGCPause-Success", DataSourceType.COUNTER).increment();
+                    cacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-DelayDueToGCPause-Success", DataSourceType.COUNTER).increment();
                 } else {
-                	cacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-DelayDueToGCPause-Fail", DataSourceType.COUNTER).increment();
+                    cacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-DelayDueToGCPause-Fail", DataSourceType.COUNTER).increment();
                 }
             }
         }

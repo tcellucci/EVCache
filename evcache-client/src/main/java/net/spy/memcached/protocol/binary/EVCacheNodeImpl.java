@@ -55,8 +55,8 @@ public class EVCacheNodeImpl extends BinaryMemcachedNodeImpl implements EVCacheN
     protected final Supplier<Boolean> sendMetrics;
     protected final MonitorConfig baseConfig;
     protected final TagList baseTags;
-	protected final TagList tags;
-	protected final EVCacheMetricsFactory cacheMetricsFactory;
+    protected final TagList tags;
+    protected final EVCacheMetricsFactory cacheMetricsFactory;
 
     private long timeoutStartTime;
 
@@ -253,8 +253,8 @@ public class EVCacheNodeImpl extends BinaryMemcachedNodeImpl implements EVCacheN
     }
 
     public TagList getBaseTags() {
-		return baseTags;
-	}
+        return baseTags;
+    }
     
     public int getTotalReconnectCount() {
         return reconnectCount.get();

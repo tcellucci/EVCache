@@ -109,7 +109,7 @@ public class EVCacheClient {
         this.pool = pool;
         this.connectionFactory = pool.getEVCacheClientPoolManager().getConnectionFactoryProvider().getConnectionFactory(appName, id, serverGroup, pool.getEVCacheClientPoolManager());
         ClusterConfig clusterConfig = cacheConfig.getClusterConfig(appName);
-		this.enableChunking = clusterConfig.isChunkingEnabled(serverGroup.getName());
+        this.enableChunking = clusterConfig.isChunkingEnabled(serverGroup.getName());
         this.chunkSize = clusterConfig.getChunkDataSize(serverGroup.getName());
         this.writeBlock = clusterConfig.getWriteBlockDuration(serverGroup.getName());
         this.chunkingTranscoder = new ChunkTranscoder();
@@ -121,7 +121,7 @@ public class EVCacheClient {
         InstanceInfo instanceInfo = null;
         ApplicationInfoManager aim = pool.getEVCacheClientPoolManager().getApplicationInfoManager();
         if (aim != null) {
-        	instanceInfo = aim.getInfo();
+            instanceInfo = aim.getInfo();
         }
         this.connectionObserver = new EVCacheConnectionObserver(cacheMetricsFactory, appName, serverGroup, instanceInfo, id);
         this.evcacheMemcachedClient.addObserver(connectionObserver);
@@ -199,7 +199,7 @@ public class EVCacheClient {
         if (node instanceof EVCacheNodeImpl) {
             final EVCacheNodeImpl evcNode = (EVCacheNodeImpl) node;
             if (!evcNode.isAvailable()) {
-            	cacheMetricsFactory.getCounter("EVCacheClient-" + appName + "-INACTIVE_NODE", evcNode.getBaseTags()).increment();
+                cacheMetricsFactory.getCounter("EVCacheClient-" + appName + "-INACTIVE_NODE", evcNode.getBaseTags()).increment();
                 if (log.isDebugEnabled()) log.debug("Node : " + node + " for app : " + appName + "; zone : " + zone
                         + " is not active. Will Fail Fast so that we can fallback to Other Zone if available.");
                 if (_throwException) throw new EVCacheConnectException("Connection for Node : " + node + " for app : " + appName
@@ -1011,30 +1011,30 @@ public class EVCacheClient {
         }
     }
     
-	public boolean appendOrAdd(String key, CachedData value, int timeToLive) throws EVCacheException {
-		int i = 0;
-		try {
-			do {
-		        final Future<Boolean> future = evcacheMemcachedClient.append(key, value);
-		        try {
-		        	if(future.get(operationTimeout.get(), TimeUnit.MILLISECONDS) == Boolean.FALSE) {
-		        		final Future<Boolean> f = evcacheMemcachedClient.add(key, timeToLive, value);
-		        		if(f.get(operationTimeout.get(), TimeUnit.MILLISECONDS) == Boolean.TRUE) {
-		        			return true;
-		        		}
-		        	} else {
-		        		return true;
-		        	}
-		        } catch(TimeoutException te) {
-		        	return false;
-		        }
-			} while(i++ < 2);
+    public boolean appendOrAdd(String key, CachedData value, int timeToLive) throws EVCacheException {
+        int i = 0;
+        try {
+            do {
+                final Future<Boolean> future = evcacheMemcachedClient.append(key, value);
+                try {
+                    if(future.get(operationTimeout.get(), TimeUnit.MILLISECONDS) == Boolean.FALSE) {
+                        final Future<Boolean> f = evcacheMemcachedClient.add(key, timeToLive, value);
+                        if(f.get(operationTimeout.get(), TimeUnit.MILLISECONDS) == Boolean.TRUE) {
+                            return true;
+                        }
+                    } else {
+                        return true;
+                    }
+                } catch(TimeoutException te) {
+                    return false;
+                }
+            } while(i++ < 2);
         } catch (Exception ex) {
             if (log.isDebugEnabled() ) log.debug("Exception appendOrAdd data for APP " + appName + ", key : " + key, ex);
             return false;
         } 
-		return false;
-	}
+        return false;
+    }
 
 
     public <T> Future<Boolean> add(String key, int exp, T value) throws Exception {
@@ -1073,15 +1073,15 @@ public class EVCacheClient {
     
 
     public <T> Future<Boolean> touch(String key, int timeToLive) throws Exception {
-    	return touch(key, timeToLive, null);
+        return touch(key, timeToLive, null);
     }
 
     public <T> Future<Boolean> touch(String key, int timeToLive, EVCacheLatch latch) throws Exception {
-    	if(ignoreTouch.get()) {
-    		final ListenableFuture<Boolean, OperationCompletionListener> sf = new SuccessFuture();
-    		if (latch != null && latch instanceof EVCacheLatchImpl && !isInWriteOnly()) ((EVCacheLatchImpl) latch).addFuture(sf);
-    		return sf;
-    	}
+        if(ignoreTouch.get()) {
+            final ListenableFuture<Boolean, OperationCompletionListener> sf = new SuccessFuture();
+            if (latch != null && latch instanceof EVCacheLatchImpl && !isInWriteOnly()) ((EVCacheLatchImpl) latch).addFuture(sf);
+            return sf;
+        }
         final MemcachedNode node = evcacheMemcachedClient.getEVCacheNode(key);
         if (!ensureWriteQueueSize(node, key)) {
             final ListenableFuture<Boolean, OperationCompletionListener> defaultFuture = (ListenableFuture<Boolean, OperationCompletionListener>) getDefaultFuture();
@@ -1252,31 +1252,31 @@ public class EVCacheClient {
     
     static class SuccessFuture implements ListenableFuture<Boolean, OperationCompletionListener> {
 
-		@Override
-		public boolean cancel(boolean mayInterruptIfRunning) {
-			return true;
-		}
+        @Override
+        public boolean cancel(boolean mayInterruptIfRunning) {
+            return true;
+        }
 
-		@Override
-		public boolean isCancelled() {
-			return false;
-		}
+        @Override
+        public boolean isCancelled() {
+            return false;
+        }
 
-		@Override
-		public boolean isDone() {
-			return true;
-		}
+        @Override
+        public boolean isDone() {
+            return true;
+        }
 
-		@Override
-		public Boolean get() throws InterruptedException, ExecutionException {
-			return Boolean.TRUE;
-		}
+        @Override
+        public Boolean get() throws InterruptedException, ExecutionException {
+            return Boolean.TRUE;
+        }
 
-		@Override
-		public Boolean get(long timeout, TimeUnit unit)
-				throws InterruptedException, ExecutionException, TimeoutException {
-			return Boolean.TRUE;
-		}
+        @Override
+        public Boolean get(long timeout, TimeUnit unit)
+                throws InterruptedException, ExecutionException, TimeoutException {
+            return Boolean.TRUE;
+        }
 
         @Override
         public Future<Boolean> addListener(OperationCompletionListener listener) {
@@ -1286,7 +1286,7 @@ public class EVCacheClient {
         @Override
         public Future<Boolean> removeListener(OperationCompletionListener listener) {
             return this;
-        }		
+        }        
     }
 
     static class DefaultFuture implements ListenableFuture<Boolean, OperationCompletionListener> {
@@ -1419,11 +1419,11 @@ public class EVCacheClient {
             return data;
         }
 
-		@Override
-		public String toString() {
-			return "ChunkDetails [chunkKeys=" + chunkKeys + ", chunkInfo=" + chunkInfo + ", chunked=" + chunked
-					+ ", data=" + data + "]";
-		}
+        @Override
+        public String toString() {
+            return "ChunkDetails [chunkKeys=" + chunkKeys + ", chunkInfo=" + chunkInfo + ", chunked=" + chunked
+                    + ", data=" + data + "]";
+        }
 
     }
 

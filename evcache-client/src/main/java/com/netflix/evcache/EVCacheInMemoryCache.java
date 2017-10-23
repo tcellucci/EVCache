@@ -66,7 +66,7 @@ public class EVCacheInMemoryCache<T> {
         this.impl = impl;
         
         CacheConfig cacheConfig = impl.getCacheConfig();
-		InMemoryCacheConfig imcConfig = cacheConfig.getClusterConfig(appName).getInMemoryCacheConfig();
+        InMemoryCacheConfig imcConfig = cacheConfig.getClusterConfig(appName).getInMemoryCacheConfig();
         
         this._cacheDuration = imcConfig.getCacheDuration();
 

@@ -41,7 +41,7 @@ public class EVCacheConnectionObserver implements ConnectionObserver, EVCacheCon
     private final String monitorName;
 
     public EVCacheConnectionObserver(EVCacheMetricsFactory cacheMetricsFactory, String appName, ServerGroup serverGroup, InstanceInfo instanceInfo, int id) {
-    	this.cacheMetricsFactory = cacheMetricsFactory;
+        this.cacheMetricsFactory = cacheMetricsFactory;
         this.instanceInfo = instanceInfo;
         this.appName = appName;
         this.serverGroup = serverGroup;

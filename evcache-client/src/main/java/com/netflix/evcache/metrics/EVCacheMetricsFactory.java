@@ -46,7 +46,7 @@ public final class EVCacheMetricsFactory {
     public static final Tag OWNER = Tags.newTag("owner", "evcache");
 
     public EVCacheMetricsFactory(Supplier<Integer> sampleSize) {
-    	this.sampleSize = sampleSize;
+        this.sampleSize = sampleSize;
     }
     
     
@@ -375,7 +375,7 @@ public final class EVCacheMetricsFactory {
             final MonitorConfig.Builder monitorConfig = MonitorConfig.builder(metricName);
             if (tagList != null) monitorConfig.withTags(tagList);
             if (tag != null) monitorConfig.withTag(tag);
-            return monitorConfig.build();        	
+            return monitorConfig.build();            
         });
     }
 }

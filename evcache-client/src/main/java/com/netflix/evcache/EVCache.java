@@ -820,7 +820,7 @@ public interface EVCache {
      *            seconds or the exact expiry time as UNIX time
      *            
      * @return boolean which indicates if the add was successful or not.
-     * 			The operation will fail with a false response if the data already exists in EVCache.  
+     *             The operation will fail with a false response if the data already exists in EVCache.  
      * 
      * @throws EVCacheException
      *             in the rare circumstance where queue is too full to accept
@@ -1145,7 +1145,7 @@ public interface EVCache {
         @SuppressWarnings("deprecation")
         public EVCache build() {
             if (_poolManager == null) {
-            	CacheConfig cacheConfig = new PropertyRepoCacheConfig(new Archaius1PropertyRepo());
+                CacheConfig cacheConfig = new PropertyRepoCacheConfig(new Archaius1PropertyRepo());
                 _poolManager = EVCacheClientPoolManager.getInstance(cacheConfig);
                 if (log.isDebugEnabled()) log.debug("_poolManager - " + _poolManager + " through getInstance");
             }

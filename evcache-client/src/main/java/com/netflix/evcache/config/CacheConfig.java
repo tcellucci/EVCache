@@ -7,164 +7,163 @@ import com.netflix.evcache.pool.ServerGroup;
 
 public interface CacheConfig {
 
-	ClusterConfig getClusterConfig(String appName);
+    ClusterConfig getClusterConfig(String appName);
 
-	ExecutorConfig getExecutorConfig(String name);
-	
-	void addCallback(Supplier<?> someProp, Runnable callback);
+    ExecutorConfig getExecutorConfig(String name);
 
-	Supplier<Long> getMutateTimeout(Long defaultValue); // evache.mutate.timeout
+    void addCallback(Supplier<?> someProp, Runnable callback);
 
-	Supplier<Integer> getDefaultReadTimeout();
+    Supplier<Long> getMutateTimeout(Long defaultValue); // evache.mutate.timeout
 
-	Supplier<String> getLogEnabledApps();
+    Supplier<Integer> getDefaultReadTimeout();
 
-	Supplier<Boolean> isUseSimpleNodeListProvider();
+    Supplier<String> getLogEnabledApps();
 
-	String getAppsToInit();
+    Supplier<Boolean> isUseSimpleNodeListProvider();
 
-	String getAlias(String appId);
+    String getAppsToInit();
 
-	Supplier<Integer> getMetricsSampleSize();
+    String getAlias(String appId);
 
-	Supplier<Boolean> isEnableThrottleOperations();
+    Supplier<Integer> getMetricsSampleSize();
 
-	Supplier<Boolean> isEnableThrottleHotKeys();
+    Supplier<Boolean> isEnableThrottleOperations();
 
-	interface ExecutorConfig {
-		Supplier<Integer> getMaxSize(int defaultValue);
+    Supplier<Boolean> isEnableThrottleHotKeys();
 
-		Supplier<Integer> getCoreSize(int defaultValue);
-	}
+    interface ExecutorConfig {
+        Supplier<Integer> getMaxSize(int defaultValue);
 
-	public interface ClusterConfig {
-		String getClusterName();
+        Supplier<Integer> getCoreSize(int defaultValue);
+    }
 
-		ClientPoolConfig getClientPoolConfig();
+    public interface ClusterConfig {
+        String getClusterName();
 
-		InMemoryCacheConfig getInMemoryCacheConfig();
+        ClientPoolConfig getClientPoolConfig();
 
-		ThrottlerConfig getThrottlerConfig();
-		
-		void addCallback(Supplier<?> someProp, Runnable callback);
+        InMemoryCacheConfig getInMemoryCacheConfig();
 
-		Supplier<Integer> getMaxDataSizeDefault();
+        ThrottlerConfig getThrottlerConfig();
 
-		Supplier<Integer> getCompressionThresholdDefault();
+        void addCallback(Supplier<?> someProp, Runnable callback);
 
-		Supplier<Boolean> isSendMetrics();
+        Supplier<Integer> getMaxDataSizeDefault();
 
-		Supplier<String> getSimpleNodeList();
+        Supplier<Integer> getCompressionThresholdDefault();
 
-		Supplier<Integer> getBucketSize(String serverGroupName, Integer defaultValue);
+        Supplier<Boolean> isSendMetrics();
 
-		Supplier<Boolean> isNodeLocatorHashOnPartialKey(String serverGroupName);
+        Supplier<String> getSimpleNodeList();
 
-		Supplier<String> getNodeLocatorHashDelimiter(String serverGroupName);
+        Supplier<Integer> getBucketSize(String serverGroupName, Integer defaultValue);
 
-		Supplier<Boolean> isAddOperationFixup(boolean defaultValue);
+        Supplier<Boolean> isNodeLocatorHashOnPartialKey(String serverGroupName);
 
-		Supplier<Integer> getAddOperationFixupPoolSize(int defaultValue);
+        Supplier<String> getNodeLocatorHashDelimiter(String serverGroupName);
 
-		Supplier<Boolean> isUseSimpleNodeListProvider();
+        Supplier<Boolean> isAddOperationFixup(boolean defaultValue);
 
-		Supplier<Boolean> isChunkingEnabled(String serverGroupName);
+        Supplier<Integer> getAddOperationFixupPoolSize(int defaultValue);
 
-		Supplier<Integer> getChunkDataSize(String serverGroupName);
+        Supplier<Boolean> isUseSimpleNodeListProvider();
 
-		Supplier<Integer> getWriteBlockDuration(String serverGroupName);
+        Supplier<Boolean> isChunkingEnabled(String serverGroupName);
 
-		Supplier<Boolean> isIgnoreTouch(String serverGroupName);
+        Supplier<Integer> getChunkDataSize(String serverGroupName);
 
-		Supplier<Boolean> isIgnoreInactiveNodes(String serverGroupName);
+        Supplier<Integer> getWriteBlockDuration(String serverGroupName);
 
-		Supplier<Boolean> isUseBatchPort();
+        Supplier<Boolean> isIgnoreTouch(String serverGroupName);
 
-		Supplier<Set<String>> getIgnoreHosts();
+        Supplier<Boolean> isIgnoreInactiveNodes(String serverGroupName);
 
-		Supplier<String> getFailureMode(ServerGroup serverGroup);
+        Supplier<Boolean> isUseBatchPort();
 
-		Supplier<Boolean> isThrowException(String cacheName);
+        Supplier<Set<String>> getIgnoreHosts();
 
-		Supplier<Boolean> isFallbackZone(String cacheName);
+        Supplier<String> getFailureMode(ServerGroup serverGroup);
 
-		Supplier<Boolean> isBulkFallbackZone();
+        Supplier<Boolean> isThrowException(String cacheName);
 
-		Supplier<Boolean> isBulkPartialFallbackZone();
+        Supplier<Boolean> isFallbackZone(String cacheName);
 
-		Supplier<Boolean> isUseInMemoryCache();
+        Supplier<Boolean> isBulkFallbackZone();
 
-		Supplier<Boolean> isEventsUsingLatch();
+        Supplier<Boolean> isBulkPartialFallbackZone();
 
-		public interface ThrottlerConfig {
+        Supplier<Boolean> isUseInMemoryCache();
 
-			Supplier<Boolean> isEnableThrottleHotKeys();
+        Supplier<Boolean> isEventsUsingLatch();
 
-			Supplier<Integer> getInMemoryExpireCacheSize();
+        public interface ThrottlerConfig {
 
-			Supplier<Integer> getInMemoryExpireAfterWriteDurationMs();
+            Supplier<Boolean> isEnableThrottleHotKeys();
 
-			Supplier<Integer> getInMemoryExpireAfterAccessDurationMs();
+            Supplier<Integer> getInMemoryExpireCacheSize();
 
-			Supplier<Integer> getThrottlerValue();
+            Supplier<Integer> getInMemoryExpireAfterWriteDurationMs();
 
-			Supplier<Set<String>> getThrottleKeys();
+            Supplier<Integer> getInMemoryExpireAfterAccessDurationMs();
 
-			Supplier<Set<String>> getThrottleCalls();
+            Supplier<Integer> getThrottlerValue();
 
-		}
+            Supplier<Set<String>> getThrottleKeys();
 
-		public interface InMemoryCacheConfig {
-			Supplier<Integer> getCacheDuration();
+            Supplier<Set<String>> getThrottleCalls();
 
-			Supplier<Integer> getExpireAfterAccessDuration();
+        }
 
-			Supplier<Integer> getRefreshDuration();
+        public interface InMemoryCacheConfig {
+            Supplier<Integer> getCacheDuration();
 
-			Supplier<Integer> getCacheSize();
+            Supplier<Integer> getExpireAfterAccessDuration();
 
-			Supplier<Integer> getPoolSize();
-		}
+            Supplier<Integer> getRefreshDuration();
 
-		public interface ClientPoolConfig {
-			Supplier<Integer> getPoolSize();
+            Supplier<Integer> getCacheSize();
 
-			Supplier<Integer> getReadTimeout();
+            Supplier<Integer> getPoolSize();
+        }
 
-			Supplier<Integer> getBulkReadTimeout(Supplier<Integer> defaultTimeout);
+        public interface ClientPoolConfig {
+            Supplier<Integer> getPoolSize();
 
-			Supplier<Boolean> isRefreshConnectionOnReadQueueFull();
+            Supplier<Integer> getReadTimeout();
 
-			Supplier<Integer> getRefreshConnectionOnReadQueueFullSize();
+            Supplier<Integer> getBulkReadTimeout(Supplier<Integer> defaultTimeout);
 
-			Supplier<Integer> getOperationQueueMaxBlockTime();
+            Supplier<Boolean> isRefreshConnectionOnReadQueueFull();
 
-			Supplier<Integer> getOperationTimeout();
+            Supplier<Integer> getRefreshConnectionOnReadQueueFullSize();
 
-			Supplier<Integer> getMaxReadQueueSize();
+            Supplier<Integer> getOperationQueueMaxBlockTime();
 
-			Supplier<Boolean> isRetryAllCopies();
+            Supplier<Integer> getOperationTimeout();
 
-			Supplier<Boolean> isDisableAsyncRefresh();
+            Supplier<Integer> getMaxReadQueueSize();
 
-			Supplier<Integer> getMaxRetryCount();
+            Supplier<Boolean> isRetryAllCopies();
 
-			Supplier<Integer> getLogOperations();
+            Supplier<Boolean> isDisableAsyncRefresh();
 
-			Supplier<Set<String>> getLogOperationCalls();
+            Supplier<Integer> getMaxRetryCount();
 
-			Supplier<Integer> getReconcileInterval();
+            Supplier<Integer> getLogOperations();
 
-			Supplier<Set<String>> getCloneWritesTo();
+            Supplier<Set<String>> getLogOperationCalls();
 
-			Supplier<Boolean> isPingServers();
+            Supplier<Integer> getReconcileInterval();
 
-			Supplier<Integer> getMaxQueueLength();
+            Supplier<Set<String>> getCloneWritesTo();
 
-			Supplier<Boolean> isWriteOnly(ServerGroup serverGroup);
+            Supplier<Boolean> isPingServers();
 
-			Supplier<Boolean> isDaemonMode();
+            Supplier<Integer> getMaxQueueLength();
 
-		}
-	}
+            Supplier<Boolean> isWriteOnly(ServerGroup serverGroup);
+
+            Supplier<Boolean> isDaemonMode();
+        }
+    }
 }
