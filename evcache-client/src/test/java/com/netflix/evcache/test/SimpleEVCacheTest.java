@@ -52,7 +52,7 @@ public class SimpleEVCacheTest extends Base {
         Logger.getLogger(EVCacheImpl.class).setLevel(Level.ERROR);
         Logger.getLogger(EVCacheClient.class).setLevel(Level.DEBUG);
         Logger.getLogger(EVCacheClientPool.class).setLevel(Level.DEBUG);
-        System.setProperty("EVCACHE.use.simple.node.list.provider", "false");
+        System.setProperty("EVCACHE.use.simple.node.list.provider", "true");
         System.setProperty("EVCACHE.EVCacheClientPool.readTimeout", "1000");
         System.setProperty("EVCACHE.operation.timeout", "100000");
         System.setProperty("EVCACHE.EVCacheClientPool.bulkReadTimeout", "10000");
@@ -69,9 +69,10 @@ public class SimpleEVCacheTest extends Base {
 
     @BeforeSuite(dependsOnMethods = { "setProps" })
     public void setupClusterDetails() {
-        System.setProperty("EVCACHE-NODES","evcache-useast1d-v000=100.66.36.72:11211");
+        System.setProperty("EVCACHE-NODES","evcache-useast1d-v000=100.67.80.203:11211");
         cacheConfig = new PropertyRepoCacheConfig(new Archaius1PropertyRepo());
         super.manager = EVCacheClientPoolManager.getInstance(cacheConfig);
+        EVCacheClientPoolManager.getInstance(cacheConfig).initEVCache("EVCACHE");
     }
     
     public void testAll() {
@@ -101,9 +102,13 @@ public class SimpleEVCacheTest extends Base {
         }
     }
 
-    @BeforeSuite
+    // override base class lifecycle methods
     public void setupEnv() {
     }
+
+    // override base class lifecycle methods
+    public void shutdownEnv() {
+    }    
 
     protected EVCache evCache = null;
 
@@ -128,7 +133,7 @@ public class SimpleEVCacheTest extends Base {
         }
     }
 
-    @Test(dependsOnMethods = { "testInsert" })
+    @Test(dependsOnMethods = { "testAppend" })
     public void testGet() throws Exception {
         for (int i = 0; i < 10; i++) {
             final String val = get(i, evCache);
@@ -136,7 +141,7 @@ public class SimpleEVCacheTest extends Base {
         }
     }
 
-    @Test(dependsOnMethods = { "testInsert" })
+    @Test(dependsOnMethods = { "testGet" })
     public void testGetAndTouch() throws Exception {
         for (int i = 0; i < 10; i++) {
             final String val = getAndTouch(i, evCache);
@@ -144,7 +149,7 @@ public class SimpleEVCacheTest extends Base {
         }
     }
 
-    @Test(dependsOnMethods = { "testInsert" })
+    @Test(dependsOnMethods = { "testGetAndTouch" })
     public void testBulk() throws Exception {
         final String[] keys = new String[10];
         for (int i = 0; i < keys.length; i++) {
@@ -158,7 +163,7 @@ public class SimpleEVCacheTest extends Base {
         }
     }
 
-    @Test(dependsOnMethods = { "testInsert" })
+    @Test(dependsOnMethods = { "testBulk" })
     public void testBulkAndTouch() throws Exception {
         final String[] keys = new String[10];
         for (int i = 0; i < 10; i++) {
@@ -172,7 +177,7 @@ public class SimpleEVCacheTest extends Base {
         }
     }
     
-    @Test(dependsOnMethods = { "testInsert" })
+    @Test(dependsOnMethods = { "testBulkAndTouch" })
     public void testReplace() throws Exception {
         for (int i = 0; i < 10; i++) {
             replace(i, evCache);

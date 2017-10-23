@@ -222,7 +222,7 @@ public class PropertyRepoCacheConfig implements CacheConfig {
 
 		@Override
 		public Prop<String> getSimpleNodeList() {
-			return repo.getProperty(appName + "_EVCACHE_NODES", "");
+			return repo.getProperty(appName + "-NODES", "");
 		}
 
 		@Override

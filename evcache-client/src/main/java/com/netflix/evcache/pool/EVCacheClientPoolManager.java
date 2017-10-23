@@ -130,7 +130,7 @@ public class EVCacheClientPoolManager {
     @Deprecated
     public static EVCacheClientPoolManager getInstance(CacheConfig cacheConfig) {
         if (instance == null) {
-            new EVCacheClientPoolManager(cacheConfig, ApplicationInfoManager.getInstance(), null, 
+            new EVCacheClientPoolManager(cacheConfig, null, null, 
             		new EVCacheMetricsFactory(cacheConfig.getMetricsSampleSize()), 
             		new DefaultFactoryProvider(cacheConfig));
             Supplier<Boolean> useSimpleNodeListProvider = cacheConfig.isUseSimpleNodeListProvider();
@@ -183,10 +183,10 @@ public class EVCacheClientPoolManager {
         if (poolMap.containsKey(APP)) return;
         final EVCacheNodeList provider;
         
-        if (cacheConfig.isUseSimpleNodeListProvider().get()) {
+        if (cacheConfig.getClusterConfig(APP).isUseSimpleNodeListProvider().get()) {
             provider = new SimpleNodeListProvider(APP + "-NODES", cacheConfig.getClusterConfig(APP).getSimpleNodeList());
         } else {
-            provider = new DiscoveryNodeListProvider(cacheConfig, applicationInfoManager, discoveryClient, cacheMetricsFactory, APP);
+            provider = new DiscoveryNodeListProvider(cacheConfig, applicationInfoManager, getDiscoveryClient(), cacheMetricsFactory, APP);
         }
 
         final EVCacheClientPool pool = new EVCacheClientPool(cacheConfig, APP, provider, asyncExecutor, this);

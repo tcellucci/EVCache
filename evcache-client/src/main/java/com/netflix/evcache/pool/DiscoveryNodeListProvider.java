@@ -58,7 +58,7 @@ public class DiscoveryNodeListProvider implements EVCacheNodeList {
     @Override
     public Map<ServerGroup, EVCacheServerGroupConfig> discoverInstances() throws IOException {
 
-        if ((applicationInfoManager.getInfo().getStatus() == InstanceStatus.DOWN)) {
+        if (applicationInfoManager != null && applicationInfoManager.getInfo() != null && (applicationInfoManager.getInfo().getStatus() == InstanceStatus.DOWN)) {
             return Collections.<ServerGroup, EVCacheServerGroupConfig> emptyMap();
         }
 

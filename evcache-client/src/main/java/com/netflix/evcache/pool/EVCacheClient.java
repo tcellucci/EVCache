@@ -21,6 +21,7 @@ import java.util.zip.Checksum;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.netflix.appinfo.ApplicationInfoManager;
 import com.netflix.appinfo.InstanceInfo;
 import com.netflix.discovery.shared.Pair;
 import com.netflix.evcache.EVCacheConnectException;
@@ -117,7 +118,11 @@ public class EVCacheClient {
         this.ignoreInactiveNodes = clusterConfig.isIgnoreInactiveNodes(serverGroup.getName());
 
         this.evcacheMemcachedClient = new EVCacheMemcachedClient(cacheConfig, cacheMetricsFactory, connectionFactory, memcachedNodesInZone, readTimeout, appName, zone, id, serverGroup, this);
-        InstanceInfo instanceInfo = pool.getEVCacheClientPoolManager().getApplicationInfoManager().getInfo();
+        InstanceInfo instanceInfo = null;
+        ApplicationInfoManager aim = pool.getEVCacheClientPoolManager().getApplicationInfoManager();
+        if (aim != null) {
+        	instanceInfo = aim.getInfo();
+        }
         this.connectionObserver = new EVCacheConnectionObserver(cacheMetricsFactory, appName, serverGroup, instanceInfo, id);
         this.evcacheMemcachedClient.addObserver(connectionObserver);
         this.tags = BasicTagList.of("ServerGroup", serverGroup.getName(), "APP", appName, "Id", String.valueOf(id));
