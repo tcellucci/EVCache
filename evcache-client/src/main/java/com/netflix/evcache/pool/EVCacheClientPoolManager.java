@@ -80,14 +80,14 @@ public class EVCacheClientPoolManager {
     private final Map<EVCacheClientPool, ScheduledFuture<?>> scheduledTaskMap = new HashMap<EVCacheClientPool, ScheduledFuture<?>>();
     private final EVCacheScheduledExecutor asyncExecutor;
     private final EVCacheExecutor syncExecutor;
-    private final DiscoveryClient discoveryClient;
+    private final Provider<DiscoveryClient> discoveryClient;
     private final ApplicationInfoManager applicationInfoManager;
     private final List<EVCacheEventListener> evcacheEventListenerList;
     private final Provider<IConnectionFactoryProvider> connectionFactoryprovider;
     private final CacheConfig cacheConfig;
 
     @Inject
-    public EVCacheClientPoolManager(CacheConfig cacheConfig, ApplicationInfoManager applicationInfoManager, DiscoveryClient discoveryClient, EVCacheMetricsFactory cacheMetricsFactory, Provider<IConnectionFactoryProvider> connectionFactoryprovider) {
+    public EVCacheClientPoolManager(CacheConfig cacheConfig, ApplicationInfoManager applicationInfoManager, Provider<DiscoveryClient> discoveryClient, EVCacheMetricsFactory cacheMetricsFactory, Provider<IConnectionFactoryProvider> connectionFactoryprovider) {
         instance = this;
         this.cacheMetricsFactory = cacheMetricsFactory;
         this.cacheConfig = cacheConfig;
@@ -97,7 +97,7 @@ public class EVCacheClientPoolManager {
         this.evcacheEventListenerList = new ArrayList<EVCacheEventListener>();
         this.asyncExecutor = new EVCacheScheduledExecutor(cacheConfig, Runtime.getRuntime().availableProcessors(),Runtime.getRuntime().availableProcessors() * 2, 30L, TimeUnit.SECONDS, new ThreadPoolExecutor.CallerRunsPolicy(), "scheduled");
         asyncExecutor.prestartAllCoreThreads();
-        this.syncExecutor = new EVCacheExecutor(Runtime.getRuntime().availableProcessors(),Runtime.getRuntime().availableProcessors(), 30, TimeUnit.SECONDS, new ThreadPoolExecutor.CallerRunsPolicy(), "pool");
+        this.syncExecutor = new EVCacheExecutor(cacheConfig, Runtime.getRuntime().availableProcessors(),Runtime.getRuntime().availableProcessors(), 30, TimeUnit.SECONDS, new ThreadPoolExecutor.CallerRunsPolicy(), "pool");
         syncExecutor.prestartAllCoreThreads();
         this.defaultReadTimeout = cacheConfig.getDefaultReadTimeout();
         this.logEnabledApps = cacheConfig.getLogEnabledApps();
@@ -147,8 +147,13 @@ public class EVCacheClientPoolManager {
     }
 
     public DiscoveryClient getDiscoveryClient() {
-        DiscoveryClient client = discoveryClient;
-        if (client == null) client = DiscoveryManager.getInstance().getDiscoveryClient();
+        final DiscoveryClient client; 
+        if (this.discoveryClient == null) {
+            client = DiscoveryManager.getInstance().getDiscoveryClient();
+        }
+        else {
+            client = this.discoveryClient.get();
+        }
         return client;
     }
 
@@ -186,7 +191,7 @@ public class EVCacheClientPoolManager {
         if (cacheConfig.getClusterConfig(APP).isUseSimpleNodeListProvider().get()) {
             provider = new SimpleNodeListProvider(APP + "-NODES", cacheConfig.getClusterConfig(APP).getSimpleNodeList());
         } else {
-            provider = new DiscoveryNodeListProvider(cacheConfig, applicationInfoManager, getDiscoveryClient(), cacheMetricsFactory, APP);
+            provider = new DiscoveryNodeListProvider(cacheConfig, applicationInfoManager, discoveryClient.get(), cacheMetricsFactory, APP);
         }
 
         final EVCacheClientPool pool = new EVCacheClientPool(cacheConfig, APP, provider, asyncExecutor, this);

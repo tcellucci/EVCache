@@ -34,6 +34,7 @@ public class EVCacheModule extends AbstractModule {
     protected void configure() {
         install(MultibindingsScanner.asModule());
         OptionalBinder.newOptionalBinder(binder(), PropertyRepo.class);
+        OptionalBinder.newOptionalBinder(binder(), CacheConfig.class);
         bind(EVCacheModuleConfigLoader.class).asEagerSingleton();
         bind(EVCacheClientPoolManager.class).asEagerSingleton();
         
@@ -53,7 +54,7 @@ public class EVCacheModule extends AbstractModule {
         return new Archaius1PropertyRepo();
     }
  
-    @Provides
+    @ProvidesIntoOptional(Type.DEFAULT)
     @Singleton
     public CacheConfig propertyRepoCacheConfig(com.google.common.base.Optional<PropertyRepo> propertyRepo) {
         return new PropertyRepoCacheConfig(propertyRepo.get());

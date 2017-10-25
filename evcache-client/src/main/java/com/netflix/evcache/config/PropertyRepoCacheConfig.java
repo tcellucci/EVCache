@@ -81,7 +81,8 @@ public class PropertyRepoCacheConfig implements CacheConfig {
             return repo.getProperty("EVCacheScheduledExecutor." + name + ".core.size", defaultValue);
         }
 
-        public void listen(Supplier<?> someProp, Runnable callback) {
+        @Override
+        public void addCallback(Supplier<?> someProp, Runnable callback) {
             PropertyRepoCacheConfig.this.addCallback(someProp, callback);
         }
 
@@ -291,7 +292,6 @@ public class PropertyRepoCacheConfig implements CacheConfig {
 
             @Override
             public Prop<Set<String>> getThrottleCalls() {
-                // TODO Auto-generated method stub
                 return repo.getProperty(appName + "throttle.calls", Collections.emptySet());
             }
 

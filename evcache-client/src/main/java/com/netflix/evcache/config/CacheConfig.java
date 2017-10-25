@@ -35,6 +35,8 @@ public interface CacheConfig {
         Supplier<Integer> getMaxSize(int defaultValue);
 
         Supplier<Integer> getCoreSize(int defaultValue);
+
+        void addCallback(Supplier<?> someProp, Runnable callback);
     }
 
     public interface ClusterConfig {
