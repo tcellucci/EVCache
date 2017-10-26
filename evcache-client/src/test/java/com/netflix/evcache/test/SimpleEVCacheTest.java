@@ -36,15 +36,11 @@ public class SimpleEVCacheTest extends Base {
     private CacheConfig cacheConfig;
 
     public static void main(String args[]) {
-        SimpleEVCacheTest test = new SimpleEVCacheTest();
-        //System.setProperty("EVCACHE-NODES",args[0]);
         System.setProperty("EVCACHE-NODES","evcache_cineps-useast1d-v005=ec2-54-167-247-180.compute-1.amazonaws.com:11211;evcache_cineps-useast1d-v006=ec2-54-80-177-139.compute-1.amazonaws.com:11211");
-        test.setProps();
-        test.testAll();
+        new SimpleEVCacheTest().run();
     }
 
-    @BeforeSuite
-    public void setProps() {
+    void setProps() {
         BasicConfigurator.configure();
         Logger.getRootLogger().setLevel(Level.INFO);
         Logger.getLogger(SimpleEVCacheTest.class).setLevel(Level.DEBUG);
@@ -52,6 +48,7 @@ public class SimpleEVCacheTest extends Base {
         Logger.getLogger(EVCacheImpl.class).setLevel(Level.ERROR);
         Logger.getLogger(EVCacheClient.class).setLevel(Level.DEBUG);
         Logger.getLogger(EVCacheClientPool.class).setLevel(Level.DEBUG);
+        System.setProperty("evcache.use.simple.node.list.provider", "true");
         System.setProperty("EVCACHE.use.simple.node.list.provider", "true");
         System.setProperty("EVCACHE.EVCacheClientPool.readTimeout", "1000");
         System.setProperty("EVCACHE.operation.timeout", "100000");
@@ -64,20 +61,20 @@ public class SimpleEVCacheTest extends Base {
 
     }
 
-    public SimpleEVCacheTest() {
-    }
-
-    @BeforeSuite(dependsOnMethods = { "setProps" })
-    public void setupClusterDetails() {
+    @BeforeSuite
+    @Override
+    public void setupEnv() {
+        setProps();
         System.setProperty("EVCACHE-NODES","evcache-useast1d-v000=100.67.80.203:11211");
-        cacheConfig = new PropertyRepoCacheConfig(new Archaius1PropertyRepo());
+        this.cacheConfig = new PropertyRepoCacheConfig(new Archaius1PropertyRepo());
         super.manager = EVCacheClientPoolManager.getInstance(cacheConfig);
-        EVCacheClientPoolManager.getInstance(cacheConfig).initEVCache("EVCACHE");
+        super.manager.initEVCache("EVCACHE");
     }
     
-    public void testAll() {
+    @Override
+    public void run() {
+        setupEnv();
         try {
-            EVCacheClientPoolManager.getInstance(cacheConfig).initEVCache("EVCACHE");
             testEVCache();
 
             boolean flag = true;
@@ -103,10 +100,7 @@ public class SimpleEVCacheTest extends Base {
     }
 
     // override base class lifecycle methods
-    public void setupEnv() {
-    }
-
-    // override base class lifecycle methods
+    @Override
     public void shutdownEnv() {
     }    
 

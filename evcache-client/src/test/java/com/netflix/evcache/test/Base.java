@@ -1,14 +1,25 @@
 package com.netflix.evcache.test;
 
 
+import com.google.inject.AbstractModule;
 import com.google.inject.Injector;
+import com.google.inject.Module;
+import com.google.inject.multibindings.ProvidesIntoOptional;
+import com.google.inject.multibindings.ProvidesIntoOptional.Type;
 import com.netflix.appinfo.ApplicationInfoManager;
+import com.netflix.archaius.DefaultPropertyFactory;
+import com.netflix.archaius.api.Config;
+import com.netflix.archaius.api.PropertyFactory;
+import com.netflix.archaius.guice.ArchaiusModule;
 import com.netflix.config.ConfigurationManager;
 import com.netflix.discovery.guice.EurekaModule;
 import com.netflix.evcache.EVCache;
 import com.netflix.evcache.EVCacheLatch;
 import com.netflix.evcache.EVCacheModule;
 import com.netflix.evcache.EVCacheLatch.Policy;
+import com.netflix.evcache.config.Archaius2PropertyRepo;
+import com.netflix.evcache.config.CacheConfig;
+import com.netflix.evcache.config.PropertyRepo;
 import com.netflix.evcache.connection.ConnectionModule;
 import com.netflix.evcache.operation.EVCacheLatchImpl;
 import com.netflix.evcache.pool.EVCacheClient;
@@ -18,20 +29,26 @@ import com.netflix.governator.guice.LifecycleInjectorBuilder;
 import com.netflix.governator.lifecycle.LifecycleManager;
 import com.netflix.spectator.nflx.SpectatorModule;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import javax.inject.Singleton;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testng.TestNG;
 import org.testng.annotations.AfterSuite;
 import org.testng.annotations.BeforeSuite;
 import rx.Scheduler;
 
 @SuppressWarnings("unused")
-public abstract class Base  {
+public abstract class Base implements Runnable {
 
     private static final Logger log = LoggerFactory.getLogger(Base.class);
     protected EVCache evCache = null;
@@ -53,43 +70,58 @@ public abstract class Base  {
         }
 
         props.setProperty("eureka.environment", "test");
+        props.setProperty("@environment", "test");
         System.setProperty("eureka.region", "us-east-1");
         props.setProperty("eureka.region", "us-east-1");
+        props.setProperty("@region", "us-east-1");
         props.setProperty("eureka.appid", "clatency");
         props.setProperty("eureka.serviceUrl.default","http://${@region}.discovery${@environment}.netflix.net:7001/discovery/v2/");
         return props;
     }
 
+    /**
+     * load evcache configuration properties via Archaius1
+     * @param props
+     */
     public void setupTest(Properties props) {
+        ConfigurationManager.loadProperties(props);
     }
 
+    /**
+     * 
+     */
     @BeforeSuite
     public void setupEnv() {
         Properties props = getProps();
 
         try {
-            ConfigurationManager.loadProperties(props);
+            setupTest(props);
 
-            LifecycleInjectorBuilder builder = LifecycleInjector.builder();
-            builder.withModules(
-                    new EurekaModule(),
+            List<Module> modules = new ArrayList<>();
+            modules.addAll(Arrays.asList(new EurekaModule(),
                     new EVCacheModule(), 
                     new ConnectionModule(),
-                    new SpectatorModule()
-                    );
+                    new SpectatorModule()));
+            modules.addAll(getModules());
+            
+            LifecycleInjectorBuilder builder = LifecycleInjector.builder().withModules(modules);
 
-            injector = builder.build().createInjector();
-            lifecycleManager = injector.getInstance(LifecycleManager.class);
+            this.injector = builder.build().createInjector();
+            this.lifecycleManager = injector.getInstance(LifecycleManager.class);
 
-            lifecycleManager.start();
-            injector.getInstance(ApplicationInfoManager.class);
+            this.lifecycleManager.start();
+            this.injector.getInstance(ApplicationInfoManager.class);
             final EVCacheModule lib = injector.getInstance(EVCacheModule.class);
-            manager = injector.getInstance(EVCacheClientPoolManager.class);
+            this.manager = injector.getInstance(EVCacheClientPoolManager.class);
         } catch (Throwable e) {
             e.printStackTrace();
             log.error(e.getMessage(), e);
         }
 
+    }
+    
+    protected List<Module> getModules() {
+        return Collections.emptyList();
     }
 
     @AfterSuite
@@ -279,5 +311,12 @@ public abstract class Base  {
                 log.error(e.getMessage(), e);
             }
         }
+    }
+    
+    @Override
+    public void run() {
+        TestNG testng = new TestNG();
+        testng.setTestClasses(new Class[] { getClass() });
+        testng.run();
     }
 }

@@ -3,42 +3,70 @@ package com.netflix.evcache.test;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Future;
+
+import javax.inject.Singleton;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.annotations.Test;
 
+import com.google.inject.Module;
+import com.google.inject.multibindings.ProvidesIntoOptional;
+import com.netflix.archaius.DefaultPropertyFactory;
+import com.netflix.archaius.api.Config;
+import com.netflix.archaius.config.MapConfig;
+import com.netflix.archaius.guice.ArchaiusModule;
 import com.netflix.evcache.EVCache;
 import com.netflix.evcache.EVCacheGetOperationListener;
+import com.netflix.evcache.config.Archaius2PropertyRepo;
+import com.netflix.evcache.config.PropertyRepo;
 import com.netflix.evcache.operation.EVCacheOperationFuture;
 
 import rx.schedulers.Schedulers;
 
-public class EVCacheTestDI extends Base implements EVCacheGetOperationListener<String> {
-    private static final Logger log = LoggerFactory.getLogger(EVCacheTestDI.class);
+public class EVCacheTestDIArchaius2 extends Base implements EVCacheGetOperationListener<String> {
+    private static final Logger log = LoggerFactory.getLogger(EVCacheTestDIArchaius2.class);
     private int loops = 10;
 
     public static void main(String args[]) {
-        try {
-            EVCacheTestDI test = new EVCacheTestDI();
-            test.testAll();
-        } catch(Throwable t) {
-            log.error(t.getMessage(), t);
-        }
+        new EVCacheTestDIArchaius2().run();
     }
 
-    public EVCacheTestDI() {
+    @Override
+    protected List<Module> getModules() {
+        return Collections.singletonList(new ArchaiusModule() {
+            @Override
+            protected void configureArchaius() {
+                bindApplicationConfigurationOverride().toInstance(MapConfig.from(getProps()));
+            }
+            
+            @ProvidesIntoOptional(com.google.inject.multibindings.ProvidesIntoOptional.Type.ACTUAL)
+            @Singleton
+            public PropertyRepo archaius2PropertyRepo(Config archaius2Config) {
+                return new Archaius2PropertyRepo(new DefaultPropertyFactory(archaius2Config));
+            }
+            
+        });
     }
 
+    @Override
+    public void setupTest(Properties props) {
+        // TODO Auto-generated method stub
+        super.setupTest(props);
+    }
+
+    @Override
     protected Properties getProps() {
         Properties props = super.getProps();
         props.setProperty("EVCACHE.us-east-1d.EVCacheClientPool.writeOnly", "false");
         props.setProperty("EVCACHE.EVCacheClientPool.poolSize", "1");
         props.setProperty("EVCACHE.ping.servers", "false");
-        props.setProperty("EVCACHE.cid.throw.exception", "true");
+        props.setProperty("EVCACHE.throw.exception", "true");
         props.setProperty("EVCACHE.EVCacheClientPool.readTimeout", "500");
         props.setProperty("EVCACHE.EVCacheClientPool.bulkReadTimeout", "500");
         props.setProperty("EVCACHE.evcache.max.read.queue.length", "20");
@@ -234,7 +262,8 @@ public class EVCacheTestDI extends Base implements EVCacheGetOperationListener<S
         }
     }
 
-    public void testAll() {
+    @Override
+    public void run() {
         try {
             setupEnv();
             testEVCache();

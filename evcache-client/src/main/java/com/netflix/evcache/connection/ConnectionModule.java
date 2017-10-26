@@ -1,7 +1,7 @@
 package com.netflix.evcache.connection;
 
 import com.google.inject.AbstractModule;
-import com.google.inject.Singleton;
+import javax.inject.Singleton;
 
 @Singleton
 public class ConnectionModule extends AbstractModule {
