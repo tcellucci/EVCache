@@ -14,6 +14,10 @@ import com.netflix.archaius.api.PropertyFactory;
 import com.netflix.archaius.api.PropertyListener;
 
 public class Archaius2PropertyRepo implements PropertyRepo {
+    private interface Prop<T> extends Supplier<T> {
+        Supplier<T> onChange(Runnable r);
+    }
+    
     private final PropertyFactory propertyFactory;
 
     public Archaius2PropertyRepo(PropertyFactory propertyFactory) {
@@ -21,56 +25,56 @@ public class Archaius2PropertyRepo implements PropertyRepo {
     }
 
     @Override
-    public Prop<Boolean> getProperty(String propertyKey, Boolean defaultValue) {
+    public Supplier<Boolean> getProperty(String propertyKey, Boolean defaultValue) {
         return new Archaius2Prop<Boolean>(propertyFactory.getProperty(propertyKey).asBoolean(defaultValue));
     }
 
     @Override
-    public Prop<Integer> getProperty(String propertyKey, Integer defaultValue) {
+    public Supplier<Integer> getProperty(String propertyKey, Integer defaultValue) {
         return new Archaius2Prop<Integer>(propertyFactory.getProperty(propertyKey).asInteger(defaultValue));
     }
 
     @Override
-    public Prop<Long> getProperty(String propertyKey, Long defaultValue) {
+    public Supplier<Long> getProperty(String propertyKey, Long defaultValue) {
         return new Archaius2Prop<Long>(propertyFactory.getProperty(propertyKey).asLong(defaultValue));
     }
 
     @Override
-    public Prop<String> getProperty(String propertyKey, String defaultValue) {
+    public Supplier<String> getProperty(String propertyKey, String defaultValue) {
         return new Archaius2Prop<String>(propertyFactory.getProperty(propertyKey).asString(defaultValue));
     }
 
     @Override
-    public Prop<Set<String>> getProperty(String propertyKey, Set<String> defaultValue) {
+    public Supplier<Set<String>> getProperty(String propertyKey, Set<String> defaultValue) {
         return new Archaius2Prop<Set<String>>(propertyFactory.getProperty(propertyKey).asType(setParser, ""));
     }
 
     @Override
-    public Prop<Boolean> getProperty(String overrideKey, String primaryKey, Boolean defaultValue) {
+    public Supplier<Boolean> getProperty(String overrideKey, String primaryKey, Boolean defaultValue) {
         return new Archaius2ChainedProp<Boolean>(propertyFactory.getProperty(overrideKey).asBoolean(null),
                 propertyFactory.getProperty(primaryKey).asBoolean(defaultValue));
     }
 
     @Override
-    public Prop<String> getProperty(String overrideKey, String primaryKey, String defaultValue) {
+    public Supplier<String> getProperty(String overrideKey, String primaryKey, String defaultValue) {
         return new Archaius2ChainedProp<String>(propertyFactory.getProperty(overrideKey).asString(null),
                 propertyFactory.getProperty(primaryKey).asString(defaultValue));
     }
 
     @Override
-    public Prop<Long> getProperty(String overrideKey, String primaryKey, Long defaultValue) {
+    public Supplier<Long> getProperty(String overrideKey, String primaryKey, Long defaultValue) {
         return new Archaius2ChainedProp<Long>(propertyFactory.getProperty(overrideKey).asLong(null),
                 propertyFactory.getProperty(primaryKey).asLong(defaultValue));
     }
 
     @Override
-    public Prop<Integer> getProperty(String overrideKey, String primaryKey, Integer defaultValue) {
+    public Supplier<Integer> getProperty(String overrideKey, String primaryKey, Integer defaultValue) {
         return new Archaius2ChainedProp<Integer>(propertyFactory.getProperty(overrideKey).asInteger(null),
                 propertyFactory.getProperty(primaryKey).asInteger(defaultValue));
     }
 
     @Override
-    public Prop<Integer> getProperty(String propertyKey, Supplier<Integer> defaultValueSupplier) {
+    public Supplier<Integer> getProperty(String propertyKey, Supplier<Integer> defaultValueSupplier) {
         return new Archaius2SupplierProp<Integer>(propertyFactory.getProperty(propertyKey).asInteger(null),
                 defaultValueSupplier);
     }
@@ -117,7 +121,7 @@ public class Archaius2PropertyRepo implements PropertyRepo {
         }
 
         @Override
-        public Prop<T> onChange(Runnable callback) {
+        public Supplier<T> onChange(Runnable callback) {
             archaiusProperty.addListener(new RunnablePropertyListener<>(callback));
             return this;
         }
@@ -143,7 +147,7 @@ public class Archaius2PropertyRepo implements PropertyRepo {
         }
 
         @Override
-        public Prop<T> onChange(Runnable callback) {
+        public Supplier<T> onChange(Runnable callback) {
             overrideProperty.addListener(new RunnablePropertyListener<>(callback));
             primaryProperty.addListener(new RunnablePropertyListener<>(callback));
             return this;
@@ -171,7 +175,7 @@ public class Archaius2PropertyRepo implements PropertyRepo {
         }
 
         @Override
-        public Prop<T> onChange(Runnable callback) {
+        public Supplier<T> onChange(Runnable callback) {
             overrideProperty.addListener(new RunnablePropertyListener<>(callback));
             if (primarySupplier instanceof Prop) {
                 ((Prop<T>) primarySupplier).onChange(callback);
@@ -183,5 +187,13 @@ public class Archaius2PropertyRepo implements PropertyRepo {
         public String toString() {
             return String.format("Archaius2SupplierProp - override: %s, primary: %s", overrideProperty.get(), primarySupplier.get());
         }
+    }
+
+    @Override
+    public <T> Supplier<T> onChange(Supplier<T> property, Runnable callback) {
+        if (property instanceof Prop) {
+            ((Prop<T>)property).onChange(callback);
+        }
+        return null;
     }
 }

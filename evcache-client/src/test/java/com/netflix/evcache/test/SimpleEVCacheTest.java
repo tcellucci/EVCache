@@ -4,6 +4,7 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -14,14 +15,18 @@ import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.Level;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
 
+import com.netflix.config.ConfigurationManager;
 import com.netflix.evcache.EVCache;
 import com.netflix.evcache.EVCacheImpl;
 import com.netflix.evcache.config.Archaius1PropertyRepo;
 import com.netflix.evcache.config.CacheConfig;
 import com.netflix.evcache.config.PropertyRepoCacheConfig;
+import com.netflix.evcache.connection.DefaultFactoryProvider;
+import com.netflix.evcache.metrics.EVCacheMetricsFactory;
 import com.netflix.evcache.pool.EVCacheClient;
 import com.netflix.evcache.pool.EVCacheClientPool;
 import com.netflix.evcache.pool.EVCacheClientPoolManager;
@@ -48,12 +53,16 @@ public class SimpleEVCacheTest extends Base {
         Logger.getLogger(EVCacheImpl.class).setLevel(Level.ERROR);
         Logger.getLogger(EVCacheClient.class).setLevel(Level.DEBUG);
         Logger.getLogger(EVCacheClientPool.class).setLevel(Level.DEBUG);
-        System.setProperty("evcache.use.simple.node.list.provider", "true");
-        System.setProperty("EVCACHE.use.simple.node.list.provider", "true");
-        System.setProperty("EVCACHE.EVCacheClientPool.readTimeout", "1000");
-        System.setProperty("EVCACHE.operation.timeout", "100000");
-        System.setProperty("EVCACHE.EVCacheClientPool.bulkReadTimeout", "10000");
         
+        Properties props = new Properties();
+        props.setProperty("evcache.use.simple.node.list.provider", "true");
+        props.setProperty("EVCACHE.use.simple.node.list.provider", "true");
+        props.setProperty("EVCACHE.EVCacheClientPool.readTimeout", "1000");
+        props.setProperty("EVCACHE.operation.timeout", "100000");
+        props.setProperty("EVCACHE.EVCacheClientPool.bulkReadTimeout", "10000");
+        props.setProperty("EVCACHE-NODES","evcache-useast1d-v000=100.67.80.203:11211");
+        
+        ConfigurationManager.loadProperties(props);
         int maxThreads = 2;
         final BlockingQueue<Runnable> queue = new LinkedBlockingQueue<Runnable>(100000);
         this.pool = new ThreadPoolExecutor(maxThreads * 4, maxThreads * 4, 30, TimeUnit.SECONDS, queue);
@@ -61,13 +70,14 @@ public class SimpleEVCacheTest extends Base {
 
     }
 
-    @BeforeSuite
+    @BeforeClass
     @Override
     public void setupEnv() {
         setProps();
-        System.setProperty("EVCACHE-NODES","evcache-useast1d-v000=100.67.80.203:11211");
         this.cacheConfig = new PropertyRepoCacheConfig(new Archaius1PropertyRepo());
-        super.manager = EVCacheClientPoolManager.getInstance(cacheConfig);
+        super.manager = new EVCacheClientPoolManager(this.cacheConfig, null, null, 
+                new EVCacheMetricsFactory(cacheConfig.getMetricsSampleSize()), 
+                new DefaultFactoryProvider(cacheConfig));
         super.manager.initEVCache("EVCACHE");
     }
     
@@ -108,7 +118,7 @@ public class SimpleEVCacheTest extends Base {
 
     @Test
     public void testEVCache() {
-        this.evCache = (new EVCache.Builder()).setAppName("EVCACHE").setCachePrefix("abc").enableRetry().build();
+        this.evCache = (new EVCache.Builder(super.manager)).setAppName("EVCACHE").setCachePrefix("abc").enableRetry().build();
         assertNotNull(evCache);
     }
 

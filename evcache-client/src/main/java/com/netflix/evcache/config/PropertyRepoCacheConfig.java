@@ -8,7 +8,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Supplier;
 
-import com.netflix.evcache.config.PropertyRepo.Prop;
 import com.netflix.evcache.pool.ServerGroup;
 
 public class PropertyRepoCacheConfig implements CacheConfig {
@@ -22,26 +21,24 @@ public class PropertyRepoCacheConfig implements CacheConfig {
 
     @Override
     public void addCallback(Supplier<?> someProp, Runnable callback) {
-        if (someProp instanceof Prop) {
-            ((Prop<?>) someProp).onChange(callback);
-        }
+        repo.onChange(someProp, callback);
     }
 
     @Override
-    public Prop<Long> getMutateTimeout(Long defaultValue) {
+    public Supplier<Long> getMutateTimeout(Long defaultValue) {
         return repo.getProperty("evache.mutate.timeout", defaultValue);
     }
 
     @Override
-    public Prop<Integer> getDefaultReadTimeout() {
+    public Supplier<Integer> getDefaultReadTimeout() {
         return repo.getProperty("default.read.timeout", 20);
     }
 
-    public Prop<String> getLogEnabledApps() {
+    public Supplier<String> getLogEnabledApps() {
         return repo.getProperty("EVCacheClientPoolManager.log.apps", "*");
     }
 
-    public Prop<Boolean> isUseSimpleNodeListProvider() {
+    public Supplier<Boolean> isUseSimpleNodeListProvider() {
         return repo.getProperty("evcache.use.simple.node.list.provider", false);
     }
 
@@ -55,12 +52,12 @@ public class PropertyRepoCacheConfig implements CacheConfig {
     }
 
     @Override
-    public Prop<Integer> getMetricsSampleSize() {
+    public Supplier<Integer> getMetricsSampleSize() {
         return repo.getProperty("EVCache.metrics.sample.size", 100);
     }
 
     @Override
-    public Prop<Boolean> isEnableThrottleOperations() {
+    public Supplier<Boolean> isEnableThrottleOperations() {
         return repo.getProperty("EVCacheThrottler.throttle.operations", false);
     }
 
@@ -72,18 +69,18 @@ public class PropertyRepoCacheConfig implements CacheConfig {
         }
 
         @Override
-        public Prop<Integer> getMaxSize(int defaultValue) {
+        public Supplier<Integer> getMaxSize(int defaultValue) {
             return repo.getProperty("EVCacheScheduledExecutor." + name + ".max.size", defaultValue);
         }
 
         @Override
-        public Prop<Integer> getCoreSize(int defaultValue) {
+        public Supplier<Integer> getCoreSize(int defaultValue) {
             return repo.getProperty("EVCacheScheduledExecutor." + name + ".core.size", defaultValue);
         }
 
         @Override
         public void addCallback(Supplier<?> someProp, Runnable callback) {
-            PropertyRepoCacheConfig.this.addCallback(someProp, callback);
+           repo.onChange(someProp, callback);
         }
 
     }
@@ -98,7 +95,7 @@ public class PropertyRepoCacheConfig implements CacheConfig {
             this.appName = appId;
             this.clientPoolConfig = new DefaultClientPoolConfig();
             this.inMemoryCacheConfig = new DefaultInMemoryCacheConfig();
-            this.throttlerConfig = new PropertyRepoThrottlerConfig();
+            this.throttlerConfig = new SupplierertyRepoThrottlerConfig();
         }
 
         @Override
@@ -123,32 +120,32 @@ public class PropertyRepoCacheConfig implements CacheConfig {
 
         @Override
         public void addCallback(Supplier<?> someProp, Runnable callback) {
-            PropertyRepoCacheConfig.this.addCallback(someProp, callback);
+            repo.onChange(someProp, callback);
         }
 
         @Override
-        public Prop<Integer> getMaxDataSizeDefault() {
+        public Supplier<Integer> getMaxDataSizeDefault() {
             return repo.getProperty("default.evcache.max.data.size", Integer.MAX_VALUE);
         }
 
         @Override
-        public Prop<Integer> getCompressionThresholdDefault() {
+        public Supplier<Integer> getCompressionThresholdDefault() {
             return repo.getProperty("default.evcache.compression.threshold", 120);
         }
 
         @Override
-        public Prop<Boolean> isSendMetrics() {
+        public Supplier<Boolean> isSendMetrics() {
             return repo.getProperty("EVCacheNodeImpl." + appName + ".sendMetrics", false);
         }
 
         @Override
-        public Prop<Integer> getBucketSize(String serverGroupName, Integer defaultValue) {
+        public Supplier<Integer> getBucketSize(String serverGroupName, Integer defaultValue) {
             return repo.getProperty(appName + "." + serverGroupName + ".bucket.size", appName + ".bucket.size",
                     defaultValue);
         }
 
         @Override
-        public Prop<Boolean> isNodeLocatorHashOnPartialKey(String serverGroupName) {
+        public Supplier<Boolean> isNodeLocatorHashOnPartialKey(String serverGroupName) {
             String overrideKey = "EVCacheNodeLocator." + appName + ".hash.on.partial.key";
             String primaryKey = "EVCacheNodeLocator." + appName + "." + serverGroupName + ".hash.on.partial.key";
             Boolean defaultValue = Boolean.FALSE;
@@ -156,7 +153,7 @@ public class PropertyRepoCacheConfig implements CacheConfig {
         }
 
         @Override
-        public Prop<String> getNodeLocatorHashDelimiter(String serverGroupName) {
+        public Supplier<String> getNodeLocatorHashDelimiter(String serverGroupName) {
             String overrideKey = "EVCacheNodeLocator." + appName + ".hash.delimiter";
             String primaryKey = "EVCacheNodeLocator." + appName + "." + serverGroupName + ".hash.delimiter";
             String defaultValue = ":";
@@ -164,134 +161,134 @@ public class PropertyRepoCacheConfig implements CacheConfig {
         }
 
         @Override
-        public Prop<Boolean> isAddOperationFixup(boolean defaultVAlue) {
+        public Supplier<Boolean> isAddOperationFixup(boolean defaultVAlue) {
             return repo.getProperty(appName + ".addOperation.fixup", Boolean.FALSE);
         }
 
         @Override
-        public Prop<Integer> getAddOperationFixupPoolSize(int defaultValue) {
+        public Supplier<Integer> getAddOperationFixupPoolSize(int defaultValue) {
             return repo.getProperty(appName + ".addOperation.fixup.poolsize", 10);
         }
 
         @Override
-        public Prop<Boolean> isUseSimpleNodeListProvider() {
+        public Supplier<Boolean> isUseSimpleNodeListProvider() {
             return repo.getProperty(appName + ".use.simple.node.list.provider", "evcache.use.simple.node.list.provider",
                     Boolean.FALSE);
         }
 
         @Override
-        public Prop<String> getFailureMode(ServerGroup serverGroup) {
+        public Supplier<String> getFailureMode(ServerGroup serverGroup) {
             return repo.getProperty(serverGroup.getName() + ".failure.mode", appName + ".failure.mode", "Retry");
         }
 
         @Override
-        public Prop<Boolean> isChunkingEnabled(String serverGroupName) {
+        public Supplier<Boolean> isChunkingEnabled(String serverGroupName) {
             return repo.getProperty(serverGroupName + ".chunk.data", appName + ".chunk.data", Boolean.FALSE);
         }
 
         @Override
-        public Prop<Integer> getChunkDataSize(String serverGroupName) {
+        public Supplier<Integer> getChunkDataSize(String serverGroupName) {
             return repo.getProperty(serverGroupName + ".chunk.size", appName + ".chunk.size", 1180);
         }
 
         @Override
-        public Prop<Integer> getWriteBlockDuration(String serverGroupName) {
+        public Supplier<Integer> getWriteBlockDuration(String serverGroupName) {
             return repo.getProperty(appName + "." + serverGroupName + ".write.block.duration",
                     appName + ".write.block.duration", 25);
         }
 
         @Override
-        public Prop<Boolean> isIgnoreTouch(String serverGroupName) {
+        public Supplier<Boolean> isIgnoreTouch(String serverGroupName) {
             return repo.getProperty(appName + "." + serverGroupName + ".ignore.touch", appName + ".ignore.touch",
                     false);
         }
 
         @Override
-        public Prop<Boolean> isIgnoreInactiveNodes(String serverGroupName) {
+        public Supplier<Boolean> isIgnoreInactiveNodes(String serverGroupName) {
             return repo.getProperty(appName + ".ignore.inactive.nodes", false);
         }
 
         @Override
-        public Prop<Set<String>> getIgnoreHosts() {
+        public Supplier<Set<String>> getIgnoreHosts() {
             return repo.getProperty(appName + ".ignore.hosts", Collections.emptySet());
         }
 
         @Override
-        public Prop<Boolean> isUseBatchPort() {
+        public Supplier<Boolean> isUseBatchPort() {
             return repo.getProperty(appName + ".use.batch.port", "evcache.use.batch.port", Boolean.FALSE);
         }
 
         @Override
-        public Prop<String> getSimpleNodeList() {
+        public Supplier<String> getSimpleNodeList() {
             return repo.getProperty(appName + "-NODES", "");
         }
 
         @Override
-        public Prop<Boolean> isThrowException(String cacheName) {
+        public Supplier<Boolean> isThrowException(String cacheName) {
             return repo.getProperty(appName + "." + cacheName + ".throw.exception", appName + ".throw.exception",
                     Boolean.FALSE);
         }
 
         @Override
-        public Prop<Boolean> isFallbackZone(String cacheName) {
+        public Supplier<Boolean> isFallbackZone(String cacheName) {
             return repo.getProperty(appName + "." + cacheName + ".fallback.zone", appName + ".fallback.zone",
                     Boolean.TRUE);
         }
 
         @Override
-        public Prop<Boolean> isBulkFallbackZone() {
+        public Supplier<Boolean> isBulkFallbackZone() {
             return repo.getProperty(appName + ".bulk.fallback.zone", Boolean.TRUE);
         }
 
         @Override
-        public Prop<Boolean> isBulkPartialFallbackZone() {
+        public Supplier<Boolean> isBulkPartialFallbackZone() {
             return repo.getProperty(appName + ".bulk.partial.fallback.zone", Boolean.TRUE);
         }
 
         @Override
-        public Prop<Boolean> isUseInMemoryCache() {
+        public Supplier<Boolean> isUseInMemoryCache() {
             return repo.getProperty(appName + ".use.inmemory.cache", "evcache.use.inmemory.cache", Boolean.FALSE);
         }
 
         @Override
-        public Prop<Boolean> isEventsUsingLatch() {
+        public Supplier<Boolean> isEventsUsingLatch() {
             return repo.getProperty(appName + ".events.using.latch", "evcache.events.using.latch", Boolean.FALSE);
         }
 
-        class PropertyRepoThrottlerConfig implements ThrottlerConfig {
+        class SupplierertyRepoThrottlerConfig implements ThrottlerConfig {
             @Override
-            public Prop<Boolean> isEnableThrottleHotKeys() {
+            public Supplier<Boolean> isEnableThrottleHotKeys() {
                 return repo.getProperty("EVCacheThrottler." + appName + ".throttle.hot.keys", false);
             }
 
             @Override
-            public Prop<Integer> getInMemoryExpireCacheSize() {
+            public Supplier<Integer> getInMemoryExpireCacheSize() {
                 return repo.getProperty("EVCacheThrottler." + appName + ".inmemory.cache.size", 100);
             }
 
             @Override
-            public Prop<Integer> getInMemoryExpireAfterWriteDurationMs() {
+            public Supplier<Integer> getInMemoryExpireAfterWriteDurationMs() {
                 return repo.getProperty("EVCacheThrottler." + appName + ".inmemory.expire.after.write.duration.ms",
                         10000);
             }
 
             @Override
-            public Prop<Integer> getInMemoryExpireAfterAccessDurationMs() {
+            public Supplier<Integer> getInMemoryExpireAfterAccessDurationMs() {
                 return repo.getProperty("EVCacheThrottler." + appName + ".inmemory.cache.size", 100);
             }
 
             @Override
-            public Prop<Integer> getThrottlerValue() {
+            public Supplier<Integer> getThrottlerValue() {
                 return repo.getProperty("EVCacheThrottler." + appName + ".throttle.value", 3);
             }
 
             @Override
-            public Prop<Set<String>> getThrottleKeys() {
+            public Supplier<Set<String>> getThrottleKeys() {
                 return repo.getProperty(appName + ".throttle.keys", Collections.emptySet());
             }
 
             @Override
-            public Prop<Set<String>> getThrottleCalls() {
+            public Supplier<Set<String>> getThrottleCalls() {
                 return repo.getProperty(appName + "throttle.calls", Collections.emptySet());
             }
 
@@ -300,64 +297,64 @@ public class PropertyRepoCacheConfig implements CacheConfig {
         class DefaultClientPoolConfig implements ClientPoolConfig {
 
             @Override
-            public Prop<Integer> getPoolSize() {
+            public Supplier<Integer> getPoolSize() {
                 return repo.getProperty(appName + ".EVCacheClientPool.poolSize", 1);
             }
 
             @Override
-            public Prop<Integer> getReadTimeout() {
+            public Supplier<Integer> getReadTimeout() {
                 return repo.getProperty(appName + ".EVCacheClientPool.readTimeout", "default.read.timeout", 20);
             }
 
             @Override
-            public Prop<Integer> getBulkReadTimeout(Supplier<Integer> defaultValue) {
+            public Supplier<Integer> getBulkReadTimeout(Supplier<Integer> defaultValue) {
                 return repo.getProperty(appName + ".EVCacheClientPool.bulkReadTimeout", defaultValue);
             }
 
             @Override
-            public Prop<Boolean> isRefreshConnectionOnReadQueueFull() {
+            public Supplier<Boolean> isRefreshConnectionOnReadQueueFull() {
                 return repo.getProperty(appName + ".EVCacheClientPool.refresh.connection.on.readQueueFull",
                         "EVCacheClientPool.refresh.connection.on.readQueueFull", Boolean.FALSE);
             }
 
             @Override
-            public Prop<Integer> getRefreshConnectionOnReadQueueFullSize() {
+            public Supplier<Integer> getRefreshConnectionOnReadQueueFullSize() {
                 return repo.getProperty(appName + ".EVCacheClientPool.refresh.connection.on.readQueueFull.size",
                         "EVCacheClientPool.refresh.connection.on.readQueueFull.size", 100);
             }
 
             @Override
-            public Prop<Integer> getOperationQueueMaxBlockTime() {
+            public Supplier<Integer> getOperationQueueMaxBlockTime() {
                 return repo.getProperty(appName + ".operation.QueueMaxBlockTime", 10);
             }
 
             @Override
-            public Prop<Integer> getOperationTimeout() {
+            public Supplier<Integer> getOperationTimeout() {
                 return repo.getProperty(appName + ".operation.timeout", 2500);
             }
 
             @Override
-            public Prop<Integer> getMaxReadQueueSize() {
+            public Supplier<Integer> getMaxReadQueueSize() {
                 return repo.getProperty(appName + ".max.read.queue.length", 5);
             }
 
             @Override
-            public Prop<Boolean> isRetryAllCopies() {
+            public Supplier<Boolean> isRetryAllCopies() {
                 return repo.getProperty(appName + ".retry.all.copies", Boolean.FALSE);
             }
 
             @Override
-            public Prop<Boolean> isDisableAsyncRefresh() {
+            public Supplier<Boolean> isDisableAsyncRefresh() {
                 return repo.getProperty(appName + ".disable.async.refresh", Boolean.FALSE);
             }
 
             @Override
-            public Prop<Integer> getMaxRetryCount() {
+            public Supplier<Integer> getMaxRetryCount() {
                 return repo.getProperty(appName + ".max.retry.count", 1);
             }
 
             @Override
-            public Prop<Integer> getLogOperations() {
+            public Supplier<Integer> getLogOperations() {
                 return repo.getProperty(appName + ".log.operation", 0);
             }
 
@@ -365,38 +362,38 @@ public class PropertyRepoCacheConfig implements CacheConfig {
                     Arrays.asList("SET", "DELETE", "GMISS", "TMISS", "BMISS_ALL", "TOUCH", "REPLACE"));
 
             @Override
-            public Prop<Set<String>> getLogOperationCalls() {
+            public Supplier<Set<String>> getLogOperationCalls() {
                 return repo.getProperty(appName + ".log.operation.calls", OPERATION_CALLS);
             }
 
             @Override
-            public Prop<Integer> getReconcileInterval() {
+            public Supplier<Integer> getReconcileInterval() {
                 return repo.getProperty(appName + ".reconcile.interval", 600000);
             }
 
             @Override
-            public Prop<Set<String>> getCloneWritesTo() {
+            public Supplier<Set<String>> getCloneWritesTo() {
                 return repo.getProperty(appName + ".clone.writes.to", Collections.emptySet());
             }
 
             @Override
-            public Prop<Boolean> isPingServers() {
+            public Supplier<Boolean> isPingServers() {
                 return repo.getProperty(appName + ".ping.servers", "evcache.ping.servers", Boolean.FALSE);
             }
 
             @Override
-            public Prop<Integer> getMaxQueueLength() {
+            public Supplier<Integer> getMaxQueueLength() {
                 return repo.getProperty(appName + ".max.queue.length", 16384);
             }
 
             @Override
-            public Prop<Boolean> isWriteOnly(ServerGroup serverGroup) {
+            public Supplier<Boolean> isWriteOnly(ServerGroup serverGroup) {
                 return repo.getProperty(appName + "." + serverGroup.getName() + ".EVCacheClientPool.writeOnly",
                         appName + "." + serverGroup.getZone() + ".EVCacheClientPool.writeOnly", Boolean.FALSE);
             }
 
             @Override
-            public Prop<Boolean> isDaemonMode() {
+            public Supplier<Boolean> isDaemonMode() {
                 return repo.getProperty("evcache.thread.daemon", false);
             }
         }
@@ -404,28 +401,28 @@ public class PropertyRepoCacheConfig implements CacheConfig {
         class DefaultInMemoryCacheConfig implements InMemoryCacheConfig {
 
             @Override
-            public Prop<Integer> getCacheDuration() {
+            public Supplier<Integer> getCacheDuration() {
                 return repo.getProperty(appName + ".inmemory.cache.duration.ms",
                         appName + ".inmemory.expire.after.write.duration.ms", 0);
             }
 
             @Override
-            public Prop<Integer> getExpireAfterAccessDuration() {
+            public Supplier<Integer> getExpireAfterAccessDuration() {
                 return repo.getProperty(appName + ".inmemory.expire.after.access.duration.ms", 0);
             }
 
             @Override
-            public Prop<Integer> getRefreshDuration() {
+            public Supplier<Integer> getRefreshDuration() {
                 return repo.getProperty(appName + ".inmemory.refresh.after.write.duration.ms", 0);
             }
 
             @Override
-            public Prop<Integer> getCacheSize() {
+            public Supplier<Integer> getCacheSize() {
                 return repo.getProperty(appName + ".inmemory.cache.size", 100);
             }
 
             @Override
-            public Prop<Integer> getPoolSize() {
+            public Supplier<Integer> getPoolSize() {
                 return repo.getProperty(appName + ".thread.pool.size", 5);
             }
 
@@ -434,7 +431,7 @@ public class PropertyRepoCacheConfig implements CacheConfig {
     }
 
     @Override
-    public Prop<Boolean> isEnableThrottleHotKeys() {
+    public Supplier<Boolean> isEnableThrottleHotKeys() {
         return repo.getProperty("EVCacheThrottler.throttle.hot.keys", false);
     }
 

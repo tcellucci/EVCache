@@ -92,7 +92,7 @@ public class EVCacheClientPoolManager {
         this.cacheMetricsFactory = cacheMetricsFactory;
         this.cacheConfig = cacheConfig;
         this.applicationInfoManager = applicationInfoManager;
-        this.discoveryClient = discoveryClient;
+        this.discoveryClient = discoveryClient != null ? discoveryClient : ()->DiscoveryManager.getInstance().getDiscoveryClient();
         this.connectionFactoryprovider = connectionFactoryprovider;
         this.evcacheEventListenerList = new ArrayList<EVCacheEventListener>();
         this.asyncExecutor = new EVCacheScheduledExecutor(cacheConfig, Runtime.getRuntime().availableProcessors(),Runtime.getRuntime().availableProcessors() * 2, 30L, TimeUnit.SECONDS, new ThreadPoolExecutor.CallerRunsPolicy(), "scheduled");
@@ -130,7 +130,7 @@ public class EVCacheClientPoolManager {
     @Deprecated
     public static EVCacheClientPoolManager getInstance(CacheConfig cacheConfig) {
         if (instance == null) {
-            new EVCacheClientPoolManager(cacheConfig, null, null, 
+            new EVCacheClientPoolManager(cacheConfig, null, ()->DiscoveryManager.getInstance().getDiscoveryClient(), 
                     new EVCacheMetricsFactory(cacheConfig.getMetricsSampleSize()), 
                     new DefaultFactoryProvider(cacheConfig));
             Supplier<Boolean> useSimpleNodeListProvider = cacheConfig.isUseSimpleNodeListProvider();
@@ -147,14 +147,7 @@ public class EVCacheClientPoolManager {
     }
 
     public DiscoveryClient getDiscoveryClient() {
-        final DiscoveryClient client; 
-        if (this.discoveryClient == null) {
-            client = DiscoveryManager.getInstance().getDiscoveryClient();
-        }
-        else {
-            client = this.discoveryClient.get();
-        }
-        return client;
+        return this.discoveryClient.get();
     }
 
     /**
@@ -162,7 +155,6 @@ public class EVCacheClientPoolManager {
      *      subsystem can be properly setup via the DI system.
      */
     public void initAtStartup() {
-        //final String appsToInit = ConfigurationManager.getConfigInstance().getString("evcache.appsToInit");
         final String appsToInit = cacheConfig.getAppsToInit();
         if (appsToInit != null && appsToInit.length() > 0) {
             final StringTokenizer apps = new StringTokenizer(appsToInit, ",");
@@ -188,7 +180,8 @@ public class EVCacheClientPoolManager {
         if (poolMap.containsKey(APP)) return;
         final EVCacheNodeList provider;
         
-        if (cacheConfig.getClusterConfig(APP).isUseSimpleNodeListProvider().get()) {
+        Supplier<Boolean> useSimpleNodeListProvider = cacheConfig.getClusterConfig(APP).isUseSimpleNodeListProvider();
+        if (useSimpleNodeListProvider.get()) {
             provider = new SimpleNodeListProvider(APP + "-NODES", cacheConfig.getClusterConfig(APP).getSimpleNodeList());
         } else {
             provider = new DiscoveryNodeListProvider(cacheConfig, applicationInfoManager, discoveryClient.get(), cacheMetricsFactory, APP);

@@ -56,7 +56,6 @@ public class EVCacheTestDIArchaius2 extends Base implements EVCacheGetOperationL
 
     @Override
     public void setupTest(Properties props) {
-        // TODO Auto-generated method stub
         super.setupTest(props);
     }
 

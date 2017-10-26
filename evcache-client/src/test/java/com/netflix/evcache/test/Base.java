@@ -17,7 +17,6 @@ import com.netflix.evcache.EVCache;
 import com.netflix.evcache.EVCacheLatch;
 import com.netflix.evcache.EVCacheModule;
 import com.netflix.evcache.EVCacheLatch.Policy;
-import com.netflix.evcache.config.Archaius2PropertyRepo;
 import com.netflix.evcache.config.CacheConfig;
 import com.netflix.evcache.config.PropertyRepo;
 import com.netflix.evcache.connection.ConnectionModule;
@@ -43,8 +42,13 @@ import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.TestNG;
+import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterSuite;
+import org.testng.annotations.AfterTest;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeSuite;
+import org.testng.annotations.BeforeTest;
+
 import rx.Scheduler;
 
 @SuppressWarnings("unused")
@@ -83,14 +87,14 @@ public abstract class Base implements Runnable {
      * load evcache configuration properties via Archaius1
      * @param props
      */
-    public void setupTest(Properties props) {
+    protected void setupTest(Properties props) {
         ConfigurationManager.loadProperties(props);
     }
 
     /**
      * 
      */
-    @BeforeSuite
+    @BeforeClass
     public void setupEnv() {
         Properties props = getProps();
 
@@ -116,6 +120,7 @@ public abstract class Base implements Runnable {
         } catch (Throwable e) {
             e.printStackTrace();
             log.error(e.getMessage(), e);
+            throw new RuntimeException(e);
         }
 
     }
@@ -124,7 +129,7 @@ public abstract class Base implements Runnable {
         return Collections.emptyList();
     }
 
-    @AfterSuite
+    @AfterClass
     public void shutdownEnv() {
         if (lifecycleManager != null) {
             try {
@@ -134,6 +139,10 @@ public abstract class Base implements Runnable {
                 e.printStackTrace();
             }
         }
+        lifecycleManager = null;
+        evCache = null;
+        manager = null;
+        injector = null;
     }
 
     protected EVCache.Builder getNewBuilder() {

@@ -22,6 +22,10 @@ import com.netflix.config.ChainedDynamicProperty.ChainLink;
  * 
  */
 public class Archaius1PropertyRepo implements PropertyRepo {
+    private interface Prop<T> extends Supplier<T> {
+        Supplier<T> onChange(Runnable r);
+    }
+    
     static class DynamicPropertyAdapter<T> implements Prop<T> {
         private final Property<T> property;
 
@@ -35,7 +39,7 @@ public class Archaius1PropertyRepo implements PropertyRepo {
         }
 
         @Override
-        public Prop<T> onChange(Runnable r) {
+        public Supplier<T> onChange(Runnable r) {
             property.addCallback(r);
             return this;
         }
@@ -56,7 +60,7 @@ public class Archaius1PropertyRepo implements PropertyRepo {
         }
 
         @Override
-        public Prop<T> onChange(Runnable r) {
+        public Supplier<T> onChange(Runnable r) {
             chainLink.addCallback(r);
             property.addCallback(r);
             return this;
@@ -67,6 +71,7 @@ public class Archaius1PropertyRepo implements PropertyRepo {
     private final DynamicPropertyFactory propertyFactory;
 
     // cache of Prop instances indexed by property name
+    @SuppressWarnings("rawtypes")
     private final ConcurrentMap<String, Prop> propertyLookup;
 
     public Archaius1PropertyRepo() {
@@ -78,12 +83,14 @@ public class Archaius1PropertyRepo implements PropertyRepo {
         this.propertyLookup = new ConcurrentHashMap<>();
     }
 
-    private <T> Prop<T> getProperty(String propertyKey, Function<String, Property> propertyFactory) {
+    @SuppressWarnings("unchecked")
+    private <T> Prop<T> getProperty(String propertyKey, Function<String, Property<T>> propertyFactory) {
         return propertyLookup.computeIfAbsent(propertyKey, k -> {
-            return new DynamicPropertyAdapter(propertyFactory.apply(k));
+            return new DynamicPropertyAdapter<T>(propertyFactory.apply(k));
         });
     }
 
+    @SuppressWarnings("unchecked")
     private <T> Prop<T> getChainedProperty(String propertyKey, Function<String, Prop<T>> propertyFactory) {
         return propertyLookup.computeIfAbsent(propertyKey, k -> {
             return propertyFactory.apply(k);
@@ -98,12 +105,12 @@ public class Archaius1PropertyRepo implements PropertyRepo {
      * java.lang.String, java.lang.Boolean)
      */
     @Override
-    public Prop<Boolean> getProperty(String overrideKey, String primaryKey, Boolean defaultValue) {
+    public Supplier<Boolean> getProperty(String overrideKey, String primaryKey, Boolean defaultValue) {
         Function<String, Prop<Boolean>> propFactory = k -> {
             ChainedDynamicProperty.DynamicBooleanPropertyThatSupportsNull baseProperty = new ChainedDynamicProperty.DynamicBooleanPropertyThatSupportsNull(
                     primaryKey, defaultValue);
             ChainLink<Boolean> overrideProperty = new ChainedDynamicProperty.BooleanProperty(overrideKey, baseProperty);
-            return new ChainedPropertyAdapter(overrideProperty, baseProperty);
+            return new ChainedPropertyAdapter<Boolean>(overrideProperty, baseProperty);
         };
         return getChainedProperty(overrideKey + primaryKey, propFactory);
     }
@@ -116,11 +123,11 @@ public class Archaius1PropertyRepo implements PropertyRepo {
      * java.lang.String, java.lang.String)
      */
     @Override
-    public Prop<String> getProperty(String overrideKey, String primaryKey, String defaultValue) {
+    public Supplier<String> getProperty(String overrideKey, String primaryKey, String defaultValue) {
         Function<String, Prop<String>> propFactory = k -> {
             DynamicStringProperty baseProp = new DynamicStringProperty(primaryKey, defaultValue);
             ChainLink<String> overrideProperty = new ChainedDynamicProperty.StringProperty(overrideKey, baseProp);
-            return new ChainedPropertyAdapter(overrideProperty, baseProp);
+            return new ChainedPropertyAdapter<String>(overrideProperty, baseProp);
         };
         return getChainedProperty(overrideKey + primaryKey, propFactory);
     }
@@ -133,11 +140,11 @@ public class Archaius1PropertyRepo implements PropertyRepo {
      * java.lang.String, java.lang.Long)
      */
     @Override
-    public Prop<Long> getProperty(String overrideKey, String primaryKey, Long defaultValue) {
+    public Supplier<Long> getProperty(String overrideKey, String primaryKey, Long defaultValue) {
         Function<String, Prop<Long>> propFactory = k -> {
             DynamicLongProperty baseProp = new DynamicLongProperty(primaryKey, defaultValue);
             ChainLink<Long> overrideProperty = new ChainedDynamicProperty.LongProperty(overrideKey, baseProp);
-            return new ChainedPropertyAdapter(overrideProperty, baseProp);
+            return new ChainedPropertyAdapter<Long>(overrideProperty, baseProp);
         };
         return getChainedProperty(overrideKey + primaryKey, propFactory);
     }
@@ -150,18 +157,18 @@ public class Archaius1PropertyRepo implements PropertyRepo {
      * java.lang.String, java.lang.Integer)
      */
     @Override
-    public Prop<Integer> getProperty(String overrideKey, String primaryKey, Integer defaultValue) {
+    public Supplier<Integer> getProperty(String overrideKey, String primaryKey, Integer defaultValue) {
         Function<String, Prop<Integer>> propFactory = k -> {
             DynamicIntProperty baseProp = new DynamicIntProperty(primaryKey, defaultValue);
             ChainLink<Integer> overrideProperty = new ChainedDynamicProperty.IntProperty(overrideKey, baseProp);
-            return new ChainedPropertyAdapter(overrideProperty, baseProp);
+            return new ChainedPropertyAdapter<Integer>(overrideProperty, baseProp);
         };
         return getChainedProperty(overrideKey + primaryKey, propFactory);
     }
 
     @Override
-    public Prop<Integer> getProperty(String key, Supplier<Integer> defaultValueSupplier) {
-        Function<String, Property> propFactory = k -> {
+    public Supplier<Integer> getProperty(String key, Supplier<Integer> defaultValueSupplier) {
+        Function<String, Property<Integer>> propFactory = k -> {
             return new PropertyWrapper<Integer>(key, null) {
                 @Override
                 public Integer getValue() {
@@ -181,7 +188,7 @@ public class Archaius1PropertyRepo implements PropertyRepo {
      * java.lang.Boolean)
      */
     @Override
-    public Prop<Boolean> getProperty(String propertyKey, Boolean defaultValue) {
+    public Supplier<Boolean> getProperty(String propertyKey, Boolean defaultValue) {
         return getProperty(propertyKey, key -> propertyFactory.getBooleanProperty(key, defaultValue));
 
     }
@@ -194,7 +201,7 @@ public class Archaius1PropertyRepo implements PropertyRepo {
      * java.lang.Integer)
      */
     @Override
-    public Prop<Integer> getProperty(String propertyKey, Integer defaultValue) {
+    public Supplier<Integer> getProperty(String propertyKey, Integer defaultValue) {
         return getProperty(propertyKey, key -> propertyFactory.getIntProperty(key, defaultValue));
     }
 
@@ -206,7 +213,7 @@ public class Archaius1PropertyRepo implements PropertyRepo {
      * java.lang.Long)
      */
     @Override
-    public Prop<Long> getProperty(String propertyKey, Long defaultValue) {
+    public Supplier<Long> getProperty(String propertyKey, Long defaultValue) {
         return getProperty(propertyKey, key -> propertyFactory.getLongProperty(key, defaultValue));
     }
 
@@ -218,7 +225,7 @@ public class Archaius1PropertyRepo implements PropertyRepo {
      * java.lang.String)
      */
     @Override
-    public Prop<String> getProperty(String propertyKey, String defaultValue) {
+    public Supplier<String> getProperty(String propertyKey, String defaultValue) {
         return getProperty(propertyKey, key -> propertyFactory.getStringProperty(key, defaultValue));
     }
 
@@ -230,8 +237,17 @@ public class Archaius1PropertyRepo implements PropertyRepo {
      * java.util.Set)
      */
     @Override
-    public Prop<Set<String>> getProperty(String propertyKey, Set<String> defaultValue) {
+    public Supplier<Set<String>> getProperty(String propertyKey, Set<String> defaultValue) {
         return getProperty(propertyKey, key -> new DynamicStringSetProperty(key, ""));
+    }
+
+    @Override
+    public <T> Supplier<T> onChange(Supplier<T> property, Runnable callback) {
+        if (property instanceof Prop) {
+            Prop<T> prop = (Prop<T>)property;
+            prop.onChange(callback);
+        }
+        return null;
     }
 
 }

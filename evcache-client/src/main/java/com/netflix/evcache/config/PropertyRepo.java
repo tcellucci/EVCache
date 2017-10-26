@@ -4,28 +4,27 @@ import java.util.Set;
 import java.util.function.Supplier;
 
 public interface PropertyRepo {
-    public interface Prop<T> extends Supplier<T> {
-        Prop<T> onChange(Runnable r);
-    }
+    
+    Supplier<Boolean> getProperty(String propertyKey, Boolean defaultValue);
 
-    Prop<Boolean> getProperty(String propertyKey, Boolean defaultValue);
+    Supplier<Integer> getProperty(String propertyKey, Integer defaultValue);
 
-    Prop<Integer> getProperty(String propertyKey, Integer defaultValue);
+    Supplier<Long> getProperty(String propertyKey, Long defaultValue);
 
-    Prop<Long> getProperty(String propertyKey, Long defaultValue);
+    Supplier<String> getProperty(String propertyKey, String defaultValue);
 
-    Prop<String> getProperty(String propertyKey, String defaultValue);
+    Supplier<Set<String>> getProperty(String propertyKey, Set<String> defaultValue);
 
-    Prop<Set<String>> getProperty(String propertyKey, Set<String> defaultValue);
+    Supplier<Boolean> getProperty(String overrideKey, String primaryKey, Boolean defaultValue);
 
-    Prop<Boolean> getProperty(String overrideKey, String primaryKey, Boolean defaultValue);
+    Supplier<String> getProperty(String overrideKey, String primaryKey, String defaultValue);
 
-    Prop<String> getProperty(String overrideKey, String primaryKey, String defaultValue);
+    Supplier<Long> getProperty(String overrideKey, String primaryKey, Long defaultValue);
 
-    Prop<Long> getProperty(String overrideKey, String primaryKey, Long defaultValue);
+    Supplier<Integer> getProperty(String overrideKey, String primaryKey, Integer defaultValue);
 
-    Prop<Integer> getProperty(String overrideKey, String primaryKey, Integer defaultValue);
+    Supplier<Integer> getProperty(String propertyKey, Supplier<Integer> defaultValue);
 
-    Prop<Integer> getProperty(String propertyKey, Supplier<Integer> defaultValue);
+    <T> Supplier<T> onChange(Supplier<T> property, Runnable callback);
 
 }
