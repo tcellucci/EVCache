@@ -3,6 +3,7 @@ package com.netflix.evcache.operation;
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -24,6 +25,7 @@ import org.slf4j.LoggerFactory;
 import com.netflix.evcache.metrics.EVCacheMetricsFactory;
 import com.netflix.evcache.pool.EVCacheClient;
 import com.netflix.evcache.pool.ServerGroup;
+import com.netflix.evcache.util.EVCacheConfig;
 import com.netflix.spectator.api.BasicTag;
 import com.netflix.spectator.api.Tag;
 import com.sun.management.GcInfo;
@@ -42,6 +44,7 @@ import rx.Single;
  *
  * types of objects returned from the GETBULK
  */
+@SuppressWarnings("restriction")
 public class EVCacheBulkGetFuture<T> extends BulkGetFuture<T> {
 
     private Logger log = LoggerFactory.getLogger(EVCacheBulkGetFuture.class);
@@ -64,7 +67,7 @@ public class EVCacheBulkGetFuture<T> extends BulkGetFuture<T> {
             throws InterruptedException, ExecutionException {
         boolean status = latch.await(to, unit);
         if(log.isDebugEnabled()) log.debug("Took " + (System.currentTimeMillis() - start)+ " to fetch " + rvMap.size() + " keys from " + client);
-        long gcDuration = -1;
+        long pauseDuration = -1;
         List<Tag> tagList = null;
         Collection<Operation> timedoutOps = null;
         String statusString = EVCacheMetricsFactory.SUCCESS;
@@ -72,20 +75,21 @@ public class EVCacheBulkGetFuture<T> extends BulkGetFuture<T> {
         try {
             if (!status) {
                 boolean gcPause = false;
-                tagList = new ArrayList<Tag>(6);
+                tagList = new ArrayList<Tag>(7);
                 tagList.addAll(client.getTagList());
+                    tagList.add(new BasicTag(EVCacheMetricsFactory.CALL_TAG, EVCacheMetricsFactory.BULK_OPERATION));
                 final RuntimeMXBean runtimeBean = ManagementFactory.getRuntimeMXBean();
                 final long vmStartTime = runtimeBean.getStartTime();
                 final List<GarbageCollectorMXBean> gcMXBeans = ManagementFactory.getGarbageCollectorMXBeans();
                 for (GarbageCollectorMXBean gcMXBean : gcMXBeans) {
                     if (gcMXBean instanceof com.sun.management.GarbageCollectorMXBean) {
                         final GcInfo lastGcInfo = ((com.sun.management.GarbageCollectorMXBean) gcMXBean).getLastGcInfo();
-    
+
                         // If no GCs, there was no pause.
                         if (lastGcInfo == null) {
                             continue;
                         }
-    
+
                         final long gcStartTime = lastGcInfo.getStartTime() + vmStartTime;
                         if (gcStartTime > start) {
                             gcPause = true;
@@ -105,17 +109,17 @@ public class EVCacheBulkGetFuture<T> extends BulkGetFuture<T> {
                         tagList.add(new BasicTag(EVCacheMetricsFactory.FETCH_AFTER_PAUSE, EVCacheMetricsFactory.NO));
                     }
                 } else {
-                    tagList.add(new BasicTag(EVCacheMetricsFactory.PAUSE_REASON, EVCacheMetricsFactory.UNKNOWN));
+                    tagList.add(new BasicTag(EVCacheMetricsFactory.PAUSE_REASON, EVCacheMetricsFactory.SCHEDULE));
                 }
-                gcDuration = System.currentTimeMillis() - start;
+                pauseDuration = System.currentTimeMillis() - start;
                 if (log.isDebugEnabled()) log.debug("Total duration due to gc event = " + (System.currentTimeMillis() - start) + " msec.");
             }
-    
+
             for (Operation op : ops) {
                 if (op.getState() != OperationState.COMPLETE) {
                     if (!status) {
                         MemcachedConnection.opTimedOut(op);
-                        if(timedoutOps == null) timedoutOps = new HashSet<Operation>(); 
+                        if(timedoutOps == null) timedoutOps = new HashSet<Operation>();
                         timedoutOps.add(op);
                     } else {
                         MemcachedConnection.opSucceeded(op);
@@ -124,9 +128,9 @@ public class EVCacheBulkGetFuture<T> extends BulkGetFuture<T> {
                     MemcachedConnection.opSucceeded(op);
                 }
             }
-    
+
             if (!status && !hasZF && (timedoutOps != null && timedoutOps.size() > 0)) statusString = EVCacheMetricsFactory.TIMEOUT;
-    
+
             for (Operation op : ops) {
                 if(op.isCancelled()) {
                     if (hasZF) statusString = EVCacheMetricsFactory.CANCELLED;
@@ -138,12 +142,13 @@ public class EVCacheBulkGetFuture<T> extends BulkGetFuture<T> {
             for (Map.Entry<String, Future<T>> me : rvMap.entrySet()) {
                 m.put(me.getKey(), me.getValue().get());
             }
-            
+
             return m;
         } finally {
-            if(gcDuration > 0) {
-                tagList.add(new BasicTag(EVCacheMetricsFactory.STATUS, statusString));
-                EVCacheMetricsFactory.getInstance().getPercentileTimer(EVCacheMetricsFactory.INTERNAL_PAUSE, tagList).record(gcDuration, TimeUnit.MILLISECONDS);
+            if(pauseDuration > 0) {
+                tagList.add(new BasicTag(EVCacheMetricsFactory.OPERATION_STATUS, statusString));
+                EVCacheMetricsFactory.getInstance().getPercentileTimer(EVCacheMetricsFactory.INTERNAL_PAUSE, tagList, Duration.ofMillis(EVCacheConfig.getInstance().getPropertyRepository().get(getApp() + ".max.read.duration.metric", Integer.class)
+                        .orElseGet("evcache.max.read.duration.metric").orElse(20).get().intValue())).record(pauseDuration, TimeUnit.MILLISECONDS);
             }
         }
     }
@@ -189,7 +194,7 @@ public class EVCacheBulkGetFuture<T> extends BulkGetFuture<T> {
             }
         }), scheduler);
     }
-    
+
     public String getZone() {
         return client.getServerGroupName();
     }

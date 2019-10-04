@@ -1,23 +1,24 @@
 package net.spy.memcached.protocol.binary;
 
+import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.channels.SocketChannel;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
+import org.joda.time.format.ISODateTimeFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.netflix.evcache.metrics.EVCacheMetricsFactory;
+import com.netflix.evcache.EVCache;
 import com.netflix.evcache.pool.EVCacheClient;
 import com.netflix.evcache.pool.ServerGroup;
-import com.netflix.spectator.api.BasicTag;
 import com.netflix.spectator.api.Counter;
 import com.netflix.spectator.api.Tag;
 
@@ -26,6 +27,7 @@ import net.spy.memcached.ops.Operation;
 import sun.misc.Cleaner;
 import sun.nio.ch.DirectBuffer;
 
+@SuppressWarnings("restriction")
 @edu.umd.cs.findbugs.annotations.SuppressFBWarnings({ "FCBL_FIELD_COULD_BE_LOCAL", "EXS_EXCEPTION_SOFTENING_NO_CHECKED",
         "REC_CATCH_EXCEPTION", "SCII_SPOILED_CHILD_INTERFACE_IMPLEMENTATOR" })
 public class EVCacheNodeImpl extends BinaryMemcachedNodeImpl implements EVCacheNodeImplMBean {
@@ -36,9 +38,10 @@ public class EVCacheNodeImpl extends BinaryMemcachedNodeImpl implements EVCacheN
     protected final BlockingQueue<Operation> readQ;
     protected final BlockingQueue<Operation> inputQueue;
     protected final EVCacheClient client;
-    protected final Counter operationsCounter;
-    protected final Counter reconnectCounter;
+    //protected Counter reconnectCounter;
+    private final AtomicInteger numOps = new AtomicInteger(0);
     private long timeoutStartTime;
+    protected final Counter operationsCounter;
 
     public EVCacheNodeImpl(SocketAddress sa, SocketChannel c, int bufSize, BlockingQueue<Operation> rq, BlockingQueue<Operation> wq, BlockingQueue<Operation> iq,
             long opQueueMaxBlockTimeMillis, boolean waitForAuth, long dt, long at, ConnectionFactory fa, EVCacheClient client, long stTime) {
@@ -49,15 +52,13 @@ public class EVCacheNodeImpl extends BinaryMemcachedNodeImpl implements EVCacheN
         this.readQ = rq;
         this.inputQueue = iq;
         this.hostName = ((InetSocketAddress) getSocketAddress()).getHostName();
-        final List<Tag> tagsCounter = new ArrayList<Tag>(5);
+//        final List<Tag> tagsCounter = new ArrayList<Tag>(5);
+//        tagsCounter.add(new BasicTag(EVCacheMetricsFactory.CACHE, client.getAppName()));
+//        tagsCounter.add(new BasicTag(EVCacheMetricsFactory.SERVERGROUP, client.getServerGroupName()));
+//        tagsCounter.add(new BasicTag(EVCacheMetricsFactory.ZONE, client.getZone()));
         //tagsCounter.add(new BasicTag(EVCacheMetricsFactory.HOST, hostName)); //TODO : enable this and see what is the impact
-        tagsCounter.add(new BasicTag(EVCacheMetricsFactory.CONFIG_NAME, EVCacheMetricsFactory.OPERATION));
-        operationsCounter = EVCacheMetricsFactory.getInstance().getCounter(EVCacheMetricsFactory.INTERNAL_CALL, tagsCounter);
+        this.operationsCounter = client.getOperationCounter();
 
-        final List<Tag> tags = new ArrayList<Tag>(5);
-        tags.add(new BasicTag(EVCacheMetricsFactory.HOST, hostName));
-        tags.add(new BasicTag(EVCacheMetricsFactory.CONFIG_NAME, EVCacheMetricsFactory.RECONNECT));
-        reconnectCounter = EVCacheMetricsFactory.getInstance().getCounter(EVCacheMetricsFactory.INTERNAL_CALL, tags);
         setConnectTime(stTime);
         setupMonitoring(appName);
     }
@@ -82,7 +83,16 @@ public class EVCacheNodeImpl extends BinaryMemcachedNodeImpl implements EVCacheN
         }
     }
 
-    public boolean isAvailable() {
+    public void registerMonitors() {
+//        try {
+//            EVCacheMetricsFactory.getInstance().getRegistry().register(this);
+//        } catch (Exception e) {
+//            if (log.isWarnEnabled()) log.warn("Exception while registering.", e);
+//        }
+    }
+
+
+    public boolean isAvailable(EVCache.Call call) {
         return isActive();
     }
 
@@ -100,11 +110,11 @@ public class EVCacheNodeImpl extends BinaryMemcachedNodeImpl implements EVCacheN
 
     public long incrOps() {
         operationsCounter.increment();
-        return operationsCounter.count();
+        return numOps.incrementAndGet();
     }
 
     public long getNumOfOps() {
-        return operationsCounter.count();
+        return numOps.get();
     }
 
     public void flushInputQueue() {
@@ -157,7 +167,17 @@ public class EVCacheNodeImpl extends BinaryMemcachedNodeImpl implements EVCacheN
 
     public void setConnectTime(long cTime) {
         this.stTime = cTime;
-        reconnectCounter.increment();
+//        if(reconnectCounter == null) {
+//            final List<Tag> tags = new ArrayList<Tag>(5);
+//            tags.add(new BasicTag(EVCacheMetricsFactory.CACHE, client.getAppName()));
+//            tags.add(new BasicTag(EVCacheMetricsFactory.SERVERGROUP, client.getServerGroupName()));
+//            tags.add(new BasicTag(EVCacheMetricsFactory.ZONE, client.getZone()));
+//            tags.add(new BasicTag(EVCacheMetricsFactory.HOST, hostName));
+//            tags.add(new BasicTag(EVCacheMetricsFactory.CONFIG_NAME, EVCacheMetricsFactory.RECONNECT));
+//            this.reconnectCounter = EVCacheMetricsFactory.getInstance().getCounter(EVCacheMetricsFactory.INTERNAL_RECONNECT, tags);
+//            
+//        }
+//        reconnectCounter.increment();
     }
 
     public String getAppName() {
@@ -181,6 +201,37 @@ public class EVCacheNodeImpl extends BinaryMemcachedNodeImpl implements EVCacheN
     }
 
     public int getTotalReconnectCount() {
-        return (int)reconnectCounter.count();
+//        if(reconnectCounter == null) return 0;
+//        return (int)reconnectCounter.count();
+        return getReconnectCount();
+    }
+
+    @Override
+    public String getSocketChannelLocalAddress() {
+        try {
+            if(getChannel() != null) {
+                return getChannel().getLocalAddress().toString();
+            }
+        } catch (IOException e) {
+            log.error("Exception", e);
+        }
+        return "NULL";
+    }
+
+    @Override
+    public String getSocketChannelRemoteAddress() {
+        try {
+            if(getChannel() != null) {
+                return getChannel().getRemoteAddress().toString();
+            }
+        } catch (IOException e) {
+            log.error("Exception", e);
+        }
+        return "NULL";
+    }
+
+    @Override
+    public String getConnectTime() {
+        return ISODateTimeFormat.dateTime().print(stTime);
     }
 }

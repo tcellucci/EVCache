@@ -3,6 +3,7 @@ package com.netflix.evcache.operation;
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CancellationException;
@@ -20,6 +21,7 @@ import com.netflix.evcache.EVCacheGetOperationListener;
 import com.netflix.evcache.metrics.EVCacheMetricsFactory;
 import com.netflix.evcache.pool.EVCacheClient;
 import com.netflix.evcache.pool.ServerGroup;
+import com.netflix.evcache.util.EVCacheConfig;
 import com.netflix.spectator.api.BasicTag;
 import com.netflix.spectator.api.Tag;
 import com.sun.management.GcInfo;
@@ -48,6 +50,7 @@ import rx.functions.Action0;
  * @param <T>
  *            Type of object returned from this future.
  */
+@SuppressWarnings("restriction")
 @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("EXS_EXCEPTION_SOFTENING_HAS_CHECKED")
 public class EVCacheOperationFuture<T> extends OperationFuture<T> {
 
@@ -113,7 +116,7 @@ public class EVCacheOperationFuture<T> extends OperationFuture<T> {
      *
      * As with the Future interface, this call will block until the results of
      * the future operation has been received.
-     * 
+     *
      * Note: If we detect there was GC pause and our operation was caught in
      * between we wait again to see if we will be successful. This is effective
      * as the timeout we specify is very low.
@@ -133,95 +136,69 @@ public class EVCacheOperationFuture<T> extends OperationFuture<T> {
      * @throws ExecutionException
      */
     public T get(long duration, TimeUnit units, boolean throwException, boolean hasZF) throws InterruptedException, TimeoutException, ExecutionException {
-        //final long startTime = System.currentTimeMillis();
         boolean status = latch.await(duration, units);
-        if(log.isDebugEnabled()) log.debug("Took " + (System.currentTimeMillis() - start)+ " to fetch key " + key + " from " + client);
-        long gcDuration = -1;
-        List<Tag> tagList = null;
-        String statusString = EVCacheMetricsFactory.SUCCESS;
-        try {
-            if (!status) {
-                boolean gcPause = false;
-                tagList = new ArrayList<Tag>(6);
-                tagList.addAll(client.getTagList());
-                final RuntimeMXBean runtimeBean = ManagementFactory.getRuntimeMXBean();
-                final long vmStartTime = runtimeBean.getStartTime();
-                final List<GarbageCollectorMXBean> gcMXBeans = ManagementFactory.getGarbageCollectorMXBeans();
-                for (GarbageCollectorMXBean gcMXBean : gcMXBeans) {
-                    if (gcMXBean instanceof com.sun.management.GarbageCollectorMXBean) {
-                        final GcInfo lastGcInfo = ((com.sun.management.GarbageCollectorMXBean) gcMXBean).getLastGcInfo();
+        if (!status) {
+            boolean gcPause = false;
+            final RuntimeMXBean runtimeBean = ManagementFactory.getRuntimeMXBean();
+            final long vmStartTime = runtimeBean.getStartTime();
+            final List<GarbageCollectorMXBean> gcMXBeans = ManagementFactory.getGarbageCollectorMXBeans();
+            for (GarbageCollectorMXBean gcMXBean : gcMXBeans) {
+                if (gcMXBean instanceof com.sun.management.GarbageCollectorMXBean) {
+                    final GcInfo lastGcInfo = ((com.sun.management.GarbageCollectorMXBean) gcMXBean).getLastGcInfo();
 
-                        // If no GCs, there was no pause.
-                        if (lastGcInfo == null) {
-                            continue;
-                        }
+                    // If no GCs, there was no pause due to GC.
+                    if (lastGcInfo == null) {
+                        continue;
+                    }
 
-                        final long gcStartTime = lastGcInfo.getStartTime() + vmStartTime;
-                        if (gcStartTime > start) {
-                            gcPause = true;
-                            gcDuration = System.currentTimeMillis() - start;
-                            if (log.isDebugEnabled()) log.debug("Total duration due to gc event = " + gcDuration + " msec.");
-                            break;
+                    final long gcStartTime = lastGcInfo.getStartTime() + vmStartTime;
+                    if (gcStartTime > start) {
+                        gcPause = true;
+                        final long gcDuration = lastGcInfo.getDuration();
+                        final long pauseDuration = System.currentTimeMillis() - gcStartTime;
+                        if (log.isDebugEnabled()) {
+                            log.debug("Event Start Time = " + start + "; Last GC Start Time = " + gcStartTime + "; " + (gcStartTime - start) + " msec ago.\n"
+                                        + "\nTotal pause duration due for this event = " + pauseDuration + " msec.\nTotal GC duration = " + gcDuration + " msec.");
                         }
+                        break;
                     }
                 }
-                if (!gcPause) 
-                    // redo the same op once more since there was a chance of gc pause
-                    if (gcPause) {
-                        status = latch.await(duration, units);
-                        tagList.add(new BasicTag(EVCacheMetricsFactory.PAUSE_REASON, EVCacheMetricsFactory.GC));
-                        if (log.isDebugEnabled()) log.debug("Retry status : " + status);
-
-                        if (status) {
-                            tagList.add(new BasicTag(EVCacheMetricsFactory.FETCH_AFTER_PAUSE, EVCacheMetricsFactory.YES));
-                        } else {
-                            tagList.add(new BasicTag(EVCacheMetricsFactory.FETCH_AFTER_PAUSE, EVCacheMetricsFactory.NO));
-                        }
-                    } else {
-                        gcDuration = System.currentTimeMillis() - start;
-                        gcPause = (gcDuration > units.toMillis(duration) + 10);
-                        if (gcPause) {
-                            tagList.add(new BasicTag(EVCacheMetricsFactory.PAUSE_REASON, EVCacheMetricsFactory.UNKNOWN));
-                        }
-                    }
             }
+            if (!gcPause && log.isDebugEnabled()) {
+                log.debug("Total pause duration due to NON-GC event = " + (System.currentTimeMillis() - start) + " msec.");
+            }
+            // redo the same op once more since there was a chance of gc pause
+            status = latch.await(duration, units);
 
-            if (!status) {
+            if (log.isDebugEnabled()) log.debug("re-await status : " + status);
+            String statusString = EVCacheMetricsFactory.SUCCESS;
+            final long pauseDuration = System.currentTimeMillis() - start;
+            if (op != null && !status) {
                 // whenever timeout occurs, continuous timeout counter will increase by 1.
                 MemcachedConnection.opTimedOut(op);
-                if (op != null) op.timeOut();
-                if (!hasZF) statusString = EVCacheMetricsFactory.TIMEOUT;
-                if (throwException) {
-                    throw new CheckedOperationTimeoutException("Timed out waiting for operation", op);
+                op.timeOut();
+                ExecutionException t = null;
+                if(throwException && !hasZF) {
+                    if (op.isTimedOut()) { t = new ExecutionException(new CheckedOperationTimeoutException("Checked Operation timed out.", op)); statusString = EVCacheMetricsFactory.CHECKED_OP_TIMEOUT; }
+                    else if (op.isCancelled()  && throwException) { t = new ExecutionException(new CancellationException("Cancelled"));statusString = EVCacheMetricsFactory.CANCELLED; }
+                    else if (op.hasErrored() ) { t = new ExecutionException(op.getException());statusString = EVCacheMetricsFactory.ERROR; }
                 }
-            } else {
-                // continuous timeout counter will be reset
-                MemcachedConnection.opSucceeded(op);
+
+                if(t != null) throw t; //finally throw the exception if needed
             }
 
-            if (op != null && op.hasErrored()) {
-                if (throwException) {
-                    throw new ExecutionException(op.getException());
-                }
-            }
-            if (isCancelled()) {
-                if (hasZF) statusString = EVCacheMetricsFactory.CANCELLED;
-                if (throwException) {
-                    throw new ExecutionException(new CancellationException("Cancelled"));
-                }
-            }
-            if (op != null && op.isTimedOut()) {
-                if (throwException) {
-                    throw new ExecutionException(new CheckedOperationTimeoutException("Operation timed out.", op));
-                }
-            }
-            return objRef.get();
-        } finally {
-            if(gcDuration > 0) {
-                tagList.add(new BasicTag(EVCacheMetricsFactory.STATUS, statusString));
-                EVCacheMetricsFactory.getInstance().getPercentileTimer(EVCacheMetricsFactory.INTERNAL_PAUSE, tagList).record(gcDuration, TimeUnit.MILLISECONDS);
-            }
+            final List<Tag> tagList = new ArrayList<Tag>(client.getTagList().size() + 4);
+            tagList.addAll(client.getTagList());
+            tagList.add(new BasicTag(EVCacheMetricsFactory.CALL_TAG, EVCacheMetricsFactory.GET_OPERATION));
+            tagList.add(new BasicTag(EVCacheMetricsFactory.PAUSE_REASON, gcPause ? EVCacheMetricsFactory.GC:EVCacheMetricsFactory.SCHEDULE));
+            tagList.add(new BasicTag(EVCacheMetricsFactory.FETCH_AFTER_PAUSE, status ? EVCacheMetricsFactory.YES:EVCacheMetricsFactory.NO));
+            tagList.add(new BasicTag(EVCacheMetricsFactory.OPERATION_STATUS, statusString));
+            EVCacheMetricsFactory.getInstance().getPercentileTimer(EVCacheMetricsFactory.INTERNAL_PAUSE, tagList, Duration.ofMillis(EVCacheConfig.getInstance().getPropertyRepository().get(getApp() + ".max.write.duration.metric", Integer.class).orElseGet("evcache.max.write.duration.metric").orElse(50).get().intValue())).record(pauseDuration, TimeUnit.MILLISECONDS);
         }
+
+        if (status)  MemcachedConnection.opSucceeded(op);// continuous timeout counter will be reset
+
+        return objRef.get();
     }
 
     public Single<T> observe() {
@@ -241,19 +218,19 @@ public class EVCacheOperationFuture<T> extends OperationFuture<T> {
             // whenever timeout occurs, continuous timeout counter will increase by 1.
             MemcachedConnection.opTimedOut(op);
             if (op != null) op.timeOut();
-            //if (!hasZF) EVCacheMetricsFactory.getInstance().increment(getApp() + "-get-CheckedOperationTimeout", client.getTagList());
+            //if (!hasZF) EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-get-CheckedOperationTimeout", DataSourceType.COUNTER).increment();
             if (throwException) {
                 subscriber.onError(new CheckedOperationTimeoutException("Timed out waiting for operation", op));
             } else {
                 if (isCancelled()) {
-                    //if (hasZF) EVCacheMetricsFactory.getInstance().increment(getApp()+ "-get-Cancelled", client.getTagList());
+                    //if (hasZF) EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-get-Cancelled", DataSourceType.COUNTER).increment();
                 }
                 subscriber.onSuccess(objRef.get());
             }
         }), scheduler).doAfterTerminate(new Action0() {
             @Override
             public void call() {
-                
+
             }
         }
         );
@@ -262,7 +239,7 @@ public class EVCacheOperationFuture<T> extends OperationFuture<T> {
     public void signalComplete() {
         super.signalComplete();
     }
-    
+
     /**
      * Cancel this operation, if possible.
      *

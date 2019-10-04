@@ -1,8 +1,8 @@
 language: java
 jdk:
-- oraclejdk8
+- openjdk8
 sudo: false
-install: ./installViaTravis.sh
+# install: ./installViaTravis.sh
 script: ./buildViaTravis.sh
 cache:
   directories:

@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
 
+import com.netflix.archaius.api.Property;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,8 +26,6 @@ import com.google.common.cache.LoadingCache;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListenableFutureTask;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.netflix.config.ChainedDynamicProperty;
-import com.netflix.config.DynamicIntProperty;
 import com.netflix.evcache.metrics.EVCacheMetricsFactory;
 import com.netflix.evcache.util.EVCacheConfig;
 import com.netflix.spectator.api.BasicTag;
@@ -46,15 +45,15 @@ import net.spy.memcached.transcoders.Transcoder;
 public class EVCacheInMemoryCache<T> {
 
     private static final Logger log = LoggerFactory.getLogger(EVCacheInMemoryCache.class);
-    private final ChainedDynamicProperty.IntProperty _cacheDuration; // The key will be cached for this long
-    private final DynamicIntProperty _refreshDuration, _exireAfterAccessDuration;
-    private final DynamicIntProperty _cacheSize; // This many items will be cached
-    private final DynamicIntProperty _poolSize; // This many threads will be initialized to fetch data from evcache async
+    private final Property<Integer> _cacheDuration; // The key will be cached for this long
+    private final Property<Integer> _refreshDuration, _exireAfterAccessDuration;
+    private final Property<Integer> _cacheSize; // This many items will be cached
+    private final Property<Integer> _poolSize; // This many threads will be initialized to fetch data from evcache async
     private final String appName;
     private final Map<String, Counter> counterMap = new ConcurrentHashMap<String, Counter>();
     private final Map<String, Gauge> gaugeMap = new ConcurrentHashMap<String, Gauge>();
 
-    private LoadingCache<String, T> cache;
+    private LoadingCache<EVCacheKey, T> cache;
     private ExecutorService pool = null;
 
     private final Transcoder<T> tc;
@@ -65,32 +64,24 @@ public class EVCacheInMemoryCache<T> {
         this.appName = appName;
         this.tc = tc;
         this.impl = impl;
-        final Runnable callback = new Runnable() {
-            public void run() {
-                setupCache();
-            }
-        };
 
-        this._cacheDuration = EVCacheConfig.getInstance().getChainedIntProperty(appName + ".inmemory.expire.after.write.duration.ms", appName + ".inmemory.cache.duration.ms", 0, callback);
+        this._cacheDuration = EVCacheConfig.getInstance().getPropertyRepository().get(appName + ".inmemory.expire.after.write.duration.ms", Integer.class).orElseGet(appName + ".inmemory.cache.duration.ms").orElse(0);
+        this._cacheDuration.subscribe((i) -> setupCache());
+        this._exireAfterAccessDuration = EVCacheConfig.getInstance().getPropertyRepository().get(appName + ".inmemory.expire.after.access.duration.ms", Integer.class).orElse(0);
+        this._exireAfterAccessDuration.subscribe((i) -> setupCache());;
 
-        this._exireAfterAccessDuration = EVCacheConfig.getInstance().getDynamicIntProperty(appName + ".inmemory.expire.after.access.duration.ms", 0);
-        this._exireAfterAccessDuration.addCallback(callback);
+        this._refreshDuration = EVCacheConfig.getInstance().getPropertyRepository().get(appName + ".inmemory.refresh.after.write.duration.ms", Integer.class).orElse(0);
+        this._refreshDuration.subscribe((i) -> setupCache());
 
-        this._refreshDuration = EVCacheConfig.getInstance().getDynamicIntProperty(appName + ".inmemory.refresh.after.write.duration.ms", 0);
-        this._refreshDuration.addCallback(callback);
+        this._cacheSize = EVCacheConfig.getInstance().getPropertyRepository().get(appName + ".inmemory.cache.size", Integer.class).orElse(100);
+        this._cacheSize.subscribe((i) -> setupCache());
 
-        this._cacheSize = EVCacheConfig.getInstance().getDynamicIntProperty(appName + ".inmemory.cache.size", 100);
-        this._cacheSize.addCallback(callback);
+        this._poolSize = EVCacheConfig.getInstance().getPropertyRepository().get(appName + ".thread.pool.size", Integer.class).orElse(5);
+        this._poolSize.subscribe((i) -> initRefreshPool());
 
-        this._poolSize = EVCacheConfig.getInstance().getDynamicIntProperty(appName + ".thread.pool.size", 5);
-        this._poolSize.addCallback(new Runnable() {
-            public void run() {
-                initRefreshPool();
-            }
-        });
         final List<Tag> tags = new ArrayList<Tag>(3);
-        tags.add(new BasicTag("cache", appName));
-        tags.add(new BasicTag("metric", "size"));
+        tags.add(new BasicTag(EVCacheMetricsFactory.CACHE, appName));
+        tags.add(new BasicTag(EVCacheMetricsFactory.METRIC, "size"));
 
         this.sizeId = EVCacheMetricsFactory.getInstance().getId(EVCacheMetricsFactory.IN_MEMORY, tags);
         setupCache();
@@ -122,15 +113,15 @@ public class EVCacheInMemoryCache<T> {
                 builder = builder.expireAfterAccess(_exireAfterAccessDuration.get(), TimeUnit.MILLISECONDS);
             } else if(_cacheDuration.get().intValue() > 0) {
                 builder = builder.expireAfterWrite(_cacheDuration.get(), TimeUnit.MILLISECONDS);
-            }  
+            }
 
             if(_refreshDuration.get() > 0) {
                 builder = builder.refreshAfterWrite(_refreshDuration.get(), TimeUnit.MILLISECONDS);
             }
             initRefreshPool();
-            final LoadingCache<String, T> newCache = builder.build(
-                    new CacheLoader<String, T>() {
-                        public T load(String key) throws  EVCacheException { 
+            final LoadingCache<EVCacheKey, T> newCache = builder.build(
+                    new CacheLoader<EVCacheKey, T>() {
+                        public T load(EVCacheKey key) throws  EVCacheException {
                             try {
                                 final T t = impl.doGet(key, tc);
                                 if(t == null) throw new  DataNotFoundException("Data for key : " + key + " could not be loaded as it was not found in EVCache");
@@ -146,7 +137,7 @@ public class EVCacheInMemoryCache<T> {
                             }
                         }
 
-                        public ListenableFuture<T> reload(final String key, T prev) {
+                        public ListenableFuture<T> reload(final EVCacheKey key, T prev) {
                             ListenableFutureTask<T> task = ListenableFutureTask.create(new Callable<T>() {
                                 public T call() {
                                     try {
@@ -170,7 +161,7 @@ public class EVCacheInMemoryCache<T> {
                         }
                     });
             if(cache != null) newCache.putAll(cache.asMap());
-            final Cache<String, T> currentCache = this.cache;
+            final Cache<EVCacheKey, T> currentCache = this.cache;
             this.cache = newCache;
             if(currentCache != null) {
                 currentCache.invalidateAll();
@@ -201,6 +192,7 @@ public class EVCacheInMemoryCache<T> {
         return size;
     }
 
+    @SuppressWarnings("deprecation")
     private void setupMonitoring(final String appName) {
         EVCacheMetricsFactory.getInstance().getRegistry().gauge(sizeId, this, EVCacheInMemoryCache::getSize);
     }
@@ -210,8 +202,8 @@ public class EVCacheInMemoryCache<T> {
         if(counter != null) return counter;
 
         final List<Tag> tags = new ArrayList<Tag>(3);
-        tags.add(new BasicTag("cache", appName));
-        tags.add(new BasicTag("metric", name));
+        tags.add(new BasicTag(EVCacheMetricsFactory.CACHE, appName));
+        tags.add(new BasicTag(EVCacheMetricsFactory.METRIC, name));
         counter = EVCacheMetricsFactory.getInstance().getCounter(EVCacheMetricsFactory.IN_MEMORY, tags);
         counterMap.put(name, counter);
         return counter;
@@ -222,8 +214,8 @@ public class EVCacheInMemoryCache<T> {
         if(gauge != null) return gauge;
 
         final List<Tag> tags = new ArrayList<Tag>(3);
-        tags.add(new BasicTag("cache", appName));
-        tags.add(new BasicTag("metric", name));
+        tags.add(new BasicTag(EVCacheMetricsFactory.CACHE, appName));
+        tags.add(new BasicTag(EVCacheMetricsFactory.METRIC, name));
 
         final Id id = EVCacheMetricsFactory.getInstance().getId(EVCacheMetricsFactory.IN_MEMORY, tags);
         gauge = EVCacheMetricsFactory.getInstance().getRegistry().gauge(id);
@@ -231,14 +223,14 @@ public class EVCacheInMemoryCache<T> {
         return gauge;
     }
 
-    public T get(String key) throws ExecutionException {
+    public T get(EVCacheKey key) throws ExecutionException {
         if (cache == null) return null;
         final T val = cache.get(key);
         if (log.isDebugEnabled()) log.debug("GET : appName : " + appName + "; Key : " + key + "; val : " + val);
         return val;
     }
 
-    public void put(String key, T value) {
+    public void put(EVCacheKey key, T value) {
         if (cache == null) return;
         cache.put(key, value);
         if (log.isDebugEnabled()) log.debug("PUT : appName : " + appName + "; Key : " + key + "; val : " + value);
@@ -250,8 +242,8 @@ public class EVCacheInMemoryCache<T> {
         if (log.isDebugEnabled()) log.debug("DEL : appName : " + appName + "; Key : " + key);
     }
 
-    public Map<String, T> getAll() {
-        if (cache == null) return Collections.<String, T>emptyMap();
+    public Map<EVCacheKey, T> getAll() {
+        if (cache == null) return Collections.<EVCacheKey, T>emptyMap();
         return cache.asMap();
     }
 
