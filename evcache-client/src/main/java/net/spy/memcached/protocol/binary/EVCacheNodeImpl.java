@@ -1,5 +1,6 @@
 package net.spy.memcached.protocol.binary;
 
+import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -14,6 +15,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
+import org.joda.time.format.ISODateTimeFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,7 +58,7 @@ public class EVCacheNodeImpl extends BinaryMemcachedNodeImpl implements EVCacheN
     protected final DynamicBooleanProperty sendMetrics;
     protected final MonitorConfig baseConfig;
     protected final TagList baseTags;
-	protected final TagList tags;
+    protected final TagList tags;
 
     private long timeoutStartTime;
 
@@ -78,7 +80,7 @@ public class EVCacheNodeImpl extends BinaryMemcachedNodeImpl implements EVCacheN
         this.metricPrefix = "EVCacheNode";
         this.baseConfig = MonitorConfig.builder(metricPrefix).build();
         baseTags = BasicTagList.concat(tags, BasicTagList.of("HOST", hostName));
-        setupMonitoring(appName, serverGroup);
+        setupMonitoring();
     }
 
     private String getMonitorName() {
@@ -87,7 +89,7 @@ public class EVCacheNodeImpl extends BinaryMemcachedNodeImpl implements EVCacheN
                 + "_" + stTime;
     }
 
-    private void setupMonitoring(String appName, ServerGroup serverGroup) {
+    private void setupMonitoring() {
         try {
             final ObjectName mBeanName = ObjectName.getInstance(getMonitorName());
             final MBeanServer mbeanServer = ManagementFactory.getPlatformMBeanServer();
@@ -97,9 +99,16 @@ public class EVCacheNodeImpl extends BinaryMemcachedNodeImpl implements EVCacheN
                 mbeanServer.unregisterMBean(mBeanName);
             }
             mbeanServer.registerMBean(this, mBeanName);
+        } catch (Exception e) {
+            if (log.isWarnEnabled()) log.warn("Exception while setting up monitoring.", e);
+        }
+    }
+
+    public void registerMonitors() {
+        try {
             Monitors.registerObject(this);
         } catch (Exception e) {
-            if (log.isDebugEnabled()) log.debug("Exception while setting up the monitoring.", e);
+            if (log.isWarnEnabled()) log.warn("Exception while registering.", e);
         }
     }
 
@@ -258,4 +267,35 @@ public class EVCacheNodeImpl extends BinaryMemcachedNodeImpl implements EVCacheN
     public int getTotalReconnectCount() {
         return reconnectCount.get();
     }
+
+	@Override
+	public String getSocketChannelLocalAddress() {
+		try {
+			if(getChannel() != null) {
+				return getChannel().getLocalAddress().toString();
+			}
+		} catch (IOException e) {
+			log.error("Exception", e);
+		}
+		return "NULL";
+	}
+
+	@Override
+	public String getSocketChannelRemoteAddress() {
+		try {
+			if(getChannel() != null) {
+				return getChannel().getRemoteAddress().toString();
+			}
+		} catch (IOException e) {
+			log.error("Exception", e);
+		}
+		return "NULL";
+	}
+
+	@Override
+	public String getConnectTime() {
+		return ISODateTimeFormat.dateTime().print(stTime);
+	}
+    
+    
 }

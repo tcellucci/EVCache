@@ -1,19 +1,21 @@
 package com.netflix.evcache;
 
+import com.google.common.annotations.VisibleForTesting;
+import com.netflix.evcache.EVCacheLatch.Policy;
+import com.netflix.evcache.pool.EVCacheClientPoolManager;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.Future;
-
+import java.util.function.BiFunction;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
-
+import net.spy.memcached.transcoders.Transcoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.netflix.evcache.EVCacheLatch.Policy;
-import com.netflix.evcache.pool.EVCacheClientPoolManager;
-
-import net.spy.memcached.transcoders.Transcoder;
 import rx.Scheduler;
 import rx.Single;
 
@@ -24,37 +26,37 @@ import rx.Single;
  * <p>
  * To create an instance of EVCache with AppName="EVCACHE", cachePrefix="Test"
  * and DefaultTTL="3600"
- * 
+ *
  * <b>Dependency Injection (Guice) Approach</b> <blockquote>
- * 
+ *
  * <pre>
  * {@literal @}Inject
  * public MyClass(EVCache.Builder builder,....) {
  *      EVCache myCache =  builder.setAppName("EVCACHE").setCachePrefix("Test").setDefaultTTL(3600).build();
  * }
  * </pre>
- * 
+ *
  * </blockquote>
- * 
+ *
  * Below is an example to set value="John Doe" for key="name" <blockquote>
- * 
+ *
  * <pre>
  * myCache.set("name", "John Doe");
  * </pre>
- * 
+ *
  * </blockquote>
- * 
- * 
+ *
+ *
  * To read the value for key="name" <blockquote>
- * 
+ *
  * <pre>
  * String value = myCache.get("name");
  * </pre>
- * 
+ *
  * </blockquote>
- * 
+ *
  * </p>
- * 
+ *
  * @author smadappa
  */
 public interface EVCache {
@@ -66,14 +68,15 @@ public interface EVCache {
     /**
      * Set an object in the EVCACHE (using the default Transcoder) regardless of
      * any existing value.
-     * 
+     *
      * The <code>timeToLive</code> value passed to memcached is as specified in
      * the defaultTTL value for this cache
      *
      * @param key
      *            the key under which this object should be added. Ensure the
      *            key is properly encoded and does not contain whitespace or
-     *            control characters.
+     *            control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param T
      *            the object to store
      * @return Array of futures representing the processing of this operation
@@ -88,7 +91,7 @@ public interface EVCache {
     /**
      * Set an object in the EVCACHE (using the default Transcoder) regardless of
      * any existing value.
-     * 
+     *
      * The <code>timeToLive</code> value is passed to memcached exactly as
      * given, and will be processed per the memcached protocol specification:
      *
@@ -103,7 +106,8 @@ public interface EVCache {
      * @param key
      *            the key under which this object should be added. Ensure the
      *            key is properly encoded and does not contain whitespace or
-     *            control characters.
+     *            control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param T
      *            the object to store
      * @param timeToLive
@@ -121,7 +125,7 @@ public interface EVCache {
     /**
      * Set an object in the EVCACHE using the given Transcoder regardless of any
      * existing value.
-     * 
+     *
      * The <code>timeToLive</code> value is passed to memcached exactly as
      * given, and will be processed per the memcached protocol specification:
      *
@@ -136,7 +140,8 @@ public interface EVCache {
      * @param key
      *            the key under which this object should be added. Ensure the
      *            key is properly encoded and does not contain whitespace or
-     *            control characters.
+     *            control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param T
      *            the object to store
      * @return Array of futures representing the processing of this operation
@@ -152,13 +157,16 @@ public interface EVCache {
 
     /**
      * Set an object in the EVCACHE using the given Transcoder regardless of any existing value using the default TTL and Transcoder.
-     * 
+     *
      * The <code>timeToLive</code> value is passed to memcached exactly as given, and will be processed per the memcached protocol specification:
      *
      * <blockquote> The actual value sent may either be Unix time aka EPOC time (number of seconds since January 1, 1970, as a 32-bit int value), or a number of seconds starting from current time. In the latter case, this number of seconds may not exceed 60*60*24*30 (number of seconds in 30 days); if the number sent by a client is larger than that, the server will consider it to be real Unix time value rather than an offset from current time. </blockquote>
      *
      * @param key
-     *            the key under which this object should be added. Ensure the key is properly encoded and does not contain whitespace or control characters.
+     *            the key under which this object should be added.
+     *            Ensure the key is properly encoded and does not
+     *            contain whitespace or control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param T
      *            the object to store
      * @param policy
@@ -172,13 +180,14 @@ public interface EVCache {
 
     /**
      * Set an object in the EVCACHE using the given Transcoder regardless of any existing value with the given TTL.
-     * 
+     *
      * The <code>timeToLive</code> value is passed to memcached exactly as given, and will be processed per the memcached protocol specification:
      *
      * <blockquote> The actual value sent may either be Unix time a.k.a EPOC time (number of seconds since January 1, 1970, as a 32-bit int value), or a number of seconds starting from current time. In the latter case, this number of seconds may not exceed 60*60*24*30 (number of seconds in 30 days); if the number sent by a client is larger than that, the server will consider it to be real Unix time value rather than an offset from current time. </blockquote>
      *
      * @param key
-     *            the key under which this object should be added. Ensure the key is properly encoded and does not contain whitespace or control characters.
+     *            the key under which this object should be added. Ensure the key is properly encoded and does not contain whitespace or control characters.  The max length of the key (including prefix)
+     *            is 250 characters.
      * @param T
      *            the object to store
      * @param timeToLive
@@ -193,13 +202,14 @@ public interface EVCache {
 
     /**
      * Set an object in the EVCACHE using the given Transcoder regardless of any existing value using the given Transcoder.
-     * 
+     *
      * The <code>timeToLive</code> value is passed to memcached exactly as given, and will be processed per the memcached protocol specification:
      *
      * <blockquote> The actual value sent may either be Unix time aka EPOC time (number of seconds since January 1, 1970, as a 32-bit int value), or a number of seconds starting from current time. In the latter case, this number of seconds may not exceed 60*60*24*30 (number of seconds in 30 days); if the number sent by a client is larger than that, the server will consider it to be real Unix time value rather than an offset from current time. </blockquote>
      *
      * @param key
-     *            the key under which this object should be added. Ensure the key is properly encoded and does not contain whitespace or control characters.
+     *            the key under which this object should be added. Ensure the key is properly encoded and does not contain whitespace or control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param T
      *            the object to store
      * @param tc
@@ -215,7 +225,7 @@ public interface EVCache {
     /**
      * Set an object in the EVCACHE using the given Transcoder regardless of any
      * existing value.
-     * 
+     *
      * The <code>timeToLive</code> value is passed to memcached exactly as
      * given, and will be processed per the memcached protocol specification:
      *
@@ -230,7 +240,8 @@ public interface EVCache {
      * @param key
      *            the key under which this object should be added. Ensure the
      *            key is properly encoded and does not contain whitespace or
-     *            control characters.
+     *            control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param T
      *            the object to store
      * @param tc
@@ -260,19 +271,20 @@ public interface EVCache {
      * @param key
      *            the key under which this object should be replaced. Ensure the
      *            key is properly encoded and does not contain whitespace or
-     *            control characters.
+     *            control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param T
      *            the object to replace
      * @param policy
      *            The Latch will be returned based on the Policy. The Latch can
      *            then be used to await until the count down has reached to 0 or
      *            the specified time has elapsed.
-     * 
+     *
      * @return EVCacheLatch which will encompasses the Operation. You can block
      *         on the Operation based on the policy to ensure the required
      *         criteria is met. The Latch can also be queried to get details on
      *         status of the operations
-     * 
+     *
      * @throws EVCacheException
      *             in the rare circumstance where queue is too full to accept
      *             any more requests or issues Serializing the value or any IO
@@ -284,11 +296,12 @@ public interface EVCache {
      * Replace an existing object in the EVCACHE using the given Transcoder &
      * default TTL. If the object does not exist in EVCACHE then the value is
      * not replaced.
-     * 
+     *
      * @param key
      *            the key under which this object should be replaced. Ensure the
      *            key is properly encoded and does not contain whitespace or
-     *            control characters.
+     *            control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param T
      *            the object to replace
      * @param tc
@@ -300,12 +313,12 @@ public interface EVCache {
      *            The Latch will be returned based on the Policy. The Latch can
      *            then be used to await until the count down has reached to 0 or
      *            the specified time has elapsed.
-     * 
+     *
      * @return EVCacheLatch which will encompasses the Operation. You can block
      *         on the Operation based on the policy to ensure the required
      *         criteria is met. The Latch can also be queried to get details on
      *         status of the operations
-     * 
+     *
      * @throws EVCacheException
      *             in the rare circumstance where queue is too full to accept
      *             any more requests or issues Serializing the value or any IO
@@ -316,7 +329,7 @@ public interface EVCache {
     /**
      * Replace an existing object in the EVCACHE using the given Transcoder. If
      * the object does not exist in EVCACHE then the value is not replaced.
-     * 
+     *
      * The <code>timeToLive</code> value is passed to memcached exactly as
      * given, and will be processed per the memcached protocol specification:
      *
@@ -331,7 +344,8 @@ public interface EVCache {
      * @param key
      *            the key under which this object should be replaced. Ensure the
      *            key is properly encoded and does not contain whitespace or
-     *            control characters.
+     *            control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param T
      *            the object to replace
      * @param tc
@@ -343,12 +357,12 @@ public interface EVCache {
      *            The Latch will be returned based on the Policy. The Latch can
      *            then be used to await until the count down has reached to 0 or
      *            the specified time has elapsed.
-     * 
+     *
      * @return EVCacheLatch which will encompasses the Operation. You can block
      *         on the Operation based on the policy to ensure the required
      *         criteria is met. The Latch can also be queried to get details on
      *         status of the operations
-     * 
+     *
      * @throws EVCacheException
      *             in the rare circumstance where queue is too full to accept
      *             any more requests or issues Serializing the value or any IO
@@ -360,7 +374,7 @@ public interface EVCache {
     /**
      * Set an object in the EVCACHE using the given {@link Transcoder}regardless of any
      * existing value.
-     * 
+     *
      * The <code>timeToLive</code> value is passed to memcached exactly as
      * given, and will be processed per the memcached protocol specification:
      *
@@ -375,7 +389,8 @@ public interface EVCache {
      * @param key
      *            the key under which this object should be added. Ensure the
      *            key is properly encoded and does not contain whitespace or
-     *            control characters.
+     *            control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param T
      *            the object to store
      * @param timeToLive
@@ -396,7 +411,8 @@ public interface EVCache {
      * @param key
      *            the non-null key corresponding to the relation to be removed.
      *            Ensure the key is properly encoded and does not contain
-     *            whitespace or control characters.
+     *            whitespace or control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @return Array of futures representing the processing of this operation
      *         across all the replicas. If the future returns true then the key
      *         was deleted from Cache, if false then the key was not found thus
@@ -416,17 +432,18 @@ public interface EVCache {
      * @param key
      *            the non-null key corresponding to the relation to be removed.
      *            Ensure the key is properly encoded and does not contain
-     *            whitespace or control characters.
+     *            whitespace or control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param policy
      *            The Latch will be returned based on the Policy. The Latch can
      *            then be used to await until the count down has reached to 0 or
      *            the specified time has elapsed.
-     * 
+     *
      * @return EVCacheLatch which will encompasses the Operation. You can block
      *         on the Operation based on the policy to ensure the required
      *         criteria is met. The Latch can also be queried to get details on
      *         status of the operations
-     * 
+     *
      * @throws EVCacheException
      *             in the rare circumstance where queue is too full to accept
      *             any more requests or any IO Related issues
@@ -438,7 +455,8 @@ public interface EVCache {
      *
      * @param key
      *            key to get. Ensure the key is properly encoded and does not
-     *            contain whitespace or control characters.
+     *            contain whitespace or control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @return the Value for the given key from the cache (null if there is
      *         none).
      * @throws EVCacheException
@@ -458,7 +476,8 @@ public interface EVCache {
      *
      * @param key
      *            key to get. Ensure the key is properly encoded and does not
-     *            contain whitespace or control characters.
+     *            contain whitespace or control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param scheduler
      *            the {@link Scheduler} to perform subscription actions on
      * @return the Value for the given key from the cache (null if there is
@@ -472,7 +491,8 @@ public interface EVCache {
      *
      * @param key
      *            key to get. Ensure the key is properly encoded and does not
-     *            contain whitespace or control characters.
+     *            contain whitespace or control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param tc
      *            the Transcoder to deserialize the data
      * @return the Value for the given key from the cache (null if there is
@@ -495,7 +515,8 @@ public interface EVCache {
      *
      * @param key
      *            key to get. Ensure the key is properly encoded and does not
-     *            contain whitespace or control characters.
+     *            contain whitespace or control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param tc
      *            the Transcoder to deserialize the data
      * @param scheduler
@@ -511,7 +532,8 @@ public interface EVCache {
      *
      * @param key
      *            key to get. Ensure the key is properly encoded and does not
-     *            contain whitespace or control characters.
+     *            contain whitespace or control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param timeToLive
      *            the new expiration of this object i.e. less than 30 days in
      *            seconds or the exact expiry time as UNIX time
@@ -521,14 +543,15 @@ public interface EVCache {
      *         none).
      */
     <T> Single<T> getAndTouch(String key, int timeToLive, Scheduler scheduler);
-    
+
     /**
      * Retrieve the value for the given a key using the default Transcoder for
      * deserialization and reset its expiration using the passed timeToLive.
      *
      * @param key
      *            key to get. Ensure the key is properly encoded and does not
-     *            contain whitespace or control characters.
+     *            contain whitespace or control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param timeToLive
      *            the new expiration of this object i.e. less than 30 days in
      *            seconds or the exact expiry time as UNIX time
@@ -540,15 +563,16 @@ public interface EVCache {
      *         none).
      */
     <T> Single<T> getAndTouch(String key, int timeToLive, Transcoder<T> tc, Scheduler scheduler);
-    
-    
-    
+
+
+
     /**
      * Get with a single key and reset its expiration.
      *
      * @param key
      *            the key to get. Ensure the key is properly encoded and does
-     *            not contain whitespace or control characters.
+     *            not contain whitespace or control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param timeToLive
      *            the new expiration of this object i.e. less than 30 days in
      *            seconds or the exact expiry time as UNIX time
@@ -565,7 +589,8 @@ public interface EVCache {
      *
      * @param key
      *            the key to get. Ensure the key is properly encoded and does
-     *            not contain whitespace or control characters.
+     *            not contain whitespace or control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param timeToLive
      *            the new expiration of this object i.e. less than 30 days in
      *            seconds or the exact expiry time as UNIX time
@@ -583,7 +608,9 @@ public interface EVCache {
      * Retrieve the value of a set of keys.
      *
      * @param keys
-     *            the keys for which we need the values
+     *            the keys for which we need the values. Ensure each key is properly encoded and does
+     *            not contain whitespace or control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @return a map of the values (for each value that exists). If the Returned
      *         map contains the key but the value in null then the key does not
      *         exist in the cache. if a key is missing then we were not able to
@@ -600,7 +627,9 @@ public interface EVCache {
      * deserialization.
      *
      * @param keys
-     *            keys to which we need the values
+     *            keys to which we need the values.Ensure each key is properly encoded and does
+     *            not contain whitespace or control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param tc
      *            the transcoder to use for deserialization
      * @return a map of the values (for each value that exists). If the Returned
@@ -619,7 +648,9 @@ public interface EVCache {
      * Transcoder for deserialization.
      *
      * @param keys
-     *            The collection of keys for which we need the values
+     *            The collection of keys for which we need the values. Ensure each key is properly encoded and does
+     *            not contain whitespace or control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @return a map of the values (for each value that exists). If the Returned
      *         map contains the key but the value in null then the key does not
      *         exist in the cache. if a key is missing then we were not able to
@@ -636,7 +667,9 @@ public interface EVCache {
      * Transcoder for deserialization.
      *
      * @param keys
-     *            The collection of keys for which we need the values
+     *            The collection of keys for which we need the values. Ensure each key is properly encoded and does
+     *            not contain whitespace or control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param tc
      *            the transcoder to use for deserialization
      * @return a map of the values (for each value that exists). If the Returned
@@ -655,7 +688,9 @@ public interface EVCache {
      * Transcoder for deserialization.
      *
      * @param keys
-     *            The collection of keys for which we need the values
+     *            The collection of keys for which we need the values. Ensure each key is properly encoded and does
+     *            not contain whitespace or control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param tc
      *            the transcoder to use for deserialization
      * @param timeToLive
@@ -680,15 +715,16 @@ public interface EVCache {
      * @param key
      *            the key for which we need the value. Ensure the key is
      *            properly encoded and does not contain whitespace or control
-     *            characters.
+     *            characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @return the Futures containing the Value or null.
      * @throws EVCacheException
      *             in the circumstance where queue is too full to accept any
      *             more requests or issues during deserialization or timeout
      *             retrieving the value or any IO Related issues
-     *             
+     *
      * @deprecated This is a sub-optimal operation does not support Retries, Fast Failures, FIT, GC Detection, etc.
-     *             Will be removed in a subsequent release 
+     *             Will be removed in a subsequent release
      */
     <T> Future<T> getAsynchronous(String key) throws EVCacheException;
 
@@ -699,7 +735,8 @@ public interface EVCache {
      * @param key
      *            the key for which we need the value. Ensure the key is
      *            properly encoded and does not contain whitespace or control
-     *            characters.
+     *            characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param tc
      *            the transcoder to use for deserialization
      * @return the Futures containing the Value or null.
@@ -707,9 +744,9 @@ public interface EVCache {
      *             in the circumstance where queue is too full to accept any
      *             more requests or issues during deserialization or timeout
      *             retrieving the value or any IO Related issues
-     *             
+     *
      * @deprecated This is a sub-optimal operation does not support Retries, Fast Failures, FIT, GC Detection, etc.
-     *             Will be removed in a subsequent release 
+     *             Will be removed in a subsequent release
      */
     <T> Future<T> getAsynchronous(String key, Transcoder<T> tc) throws EVCacheException;
 
@@ -717,7 +754,10 @@ public interface EVCache {
      * Increment the given counter, returning the new value.
      *
      * @param key
-     *            the key
+     *            the key. Ensure the key is
+     *            properly encoded and does not contain whitespace or control
+     *            characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param by
      *            the amount to increment
      * @param def
@@ -728,7 +768,7 @@ public interface EVCache {
      * @throws EVCacheException
      *             in the circumstance where timeout is exceeded or queue is
      *             full
-     * 
+     *
      */
     public long incr(String key, long by, long def, int exp) throws EVCacheException;
 
@@ -736,7 +776,10 @@ public interface EVCache {
      * Decrement the given counter, returning the new value.
      *
      * @param key
-     *            the key
+     *            the key. Ensure the key is
+     *            properly encoded and does not contain whitespace or control
+     *            characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param by
      *            the amount to decrement
      * @param def
@@ -747,7 +790,7 @@ public interface EVCache {
      * @throws EVCacheException
      *             in the circumstance where timeout is exceeded or queue is
      *             full
-     * 
+     *
      */
     public long decr(String key, long by, long def, int exp) throws EVCacheException;
 
@@ -759,7 +802,8 @@ public interface EVCache {
      * @param key
      *            the key under which this object should be appended. Ensure the
      *            key is properly encoded and does not contain whitespace or
-     *            control characters.
+     *            control characters.  The max length of the key (including prefix)
+     *            is 250 characters.
      * @param T
      *            the value to be appended
      * @param tc
@@ -767,7 +811,7 @@ public interface EVCache {
      * @param timeToLive
      *            the expiration of this object i.e. less than 30 days in
      *            seconds or the exact expiry time as UNIX time
-     *            
+     *
      * @return Array of futures representing the processing of this operation
      *         across all the replicas
      * @throws EVCacheException
@@ -785,13 +829,14 @@ public interface EVCache {
      * @param key
      *            the key under which this object should be appended. Ensure the
      *            key is properly encoded and does not contain whitespace or
-     *            control characters.
+     *            control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param T
      *            the value to be appended
      * @param timeToLive
      *            the expiration of this object i.e. less than 30 days in
      *            seconds or the exact expiry time as UNIX time
-     *            
+     *
      * @return Array of futures representing the processing of this operation
      *         across all the replicas
      * @throws EVCacheException
@@ -802,12 +847,13 @@ public interface EVCache {
     <T> Future<Boolean>[] append(String key, T value, int timeToLive) throws EVCacheException;
 
     /**
-     * Add the given value to EVCache. You cannot add if the key already exist in EVCache. 
+     * Add the given value to EVCache. You cannot add if the key already exist in EVCache.
      *
      * @param key
      *            the key which this object should be added to. Ensure the
      *            key is properly encoded and does not contain whitespace or
-     *            control characters.
+     *            control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param T
      *            the value to be added
      * @param tc
@@ -815,26 +861,27 @@ public interface EVCache {
      * @param timeToLive
      *            the expiration of this object i.e. less than 30 days in
      *            seconds or the exact expiry time as UNIX time
-     *            
+     *
      * @return boolean which indicates if the add was successful or not.
-     * 			The operation will fail with a false response if the data already exists in EVCache.  
-     * 
+     * 			The operation will fail with a false response if the data already exists in EVCache.
+     *
      * @throws EVCacheException
      *             in the rare circumstance where queue is too full to accept
      *             any more requests or issues Serializing the value or any IO
      *             Related issues
      */
     <T> boolean add(String key, T value, Transcoder<T> tc, int timeToLive) throws EVCacheException;
-    
-    
+
+
 
     /**
-     * Add the given value to EVCache. You cannot add if the key already exist in EVCache. 
+     * Add the given value to EVCache. You cannot add if the key already exist in EVCache.
      *
      * @param key
      *            the key which this object should be added to. Ensure the
      *            key is properly encoded and does not contain whitespace or
-     *            control characters.
+     *            control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param T
      *            the value to be added
      * @param tc
@@ -845,28 +892,31 @@ public interface EVCache {
      * @param policy
      *            The Latch will be returned based on the Policy. The Latch can then be used to await until the count down has reached to 0 or the specified time has elapsed.
      *
-     *            
+     *
      * @return EVCacheLatch which will encompasses the Operation. You can block
      *         on the Operation to ensure all adds are successful. If there are any partial success
-     *         The client will try and fix the Data. 
-     * 
-     * 
+     *         The client will try and fix the Data.
+     *
+     *
      * @throws EVCacheException
      *             in the rare circumstance where queue is too full to accept
      *             any more requests or issues Serializing the value or any IO
      *             Related issues
      */
     <T> EVCacheLatch add(String key, T value, Transcoder<T> tc, int timeToLive, Policy policy) throws EVCacheException;
-    
+
 
     /**
      * Touch the given key and reset its expiration time.
      *
      * @param key
-     *            the key to touch
+     *            the key to touch.  Ensure the
+     *            key is properly encoded and does not contain whitespace or
+     *            control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param ttl
      *            the new expiration time in seconds
-     * 
+     *
      * @return Array of futures representing the processing of this operation
      *         across all the replicas
      * @throws EVCacheException
@@ -883,20 +933,23 @@ public interface EVCache {
      * Touch the given key and reset its expiration time.
      *
      * @param key
-     *            the key to touch
+     *            the key to touch.  Ensure the
+     *            key is properly encoded and does not contain whitespace or
+     *            control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param ttl
      *            the new expiration time in seconds
-     * 
+     *
      * @param policy
      *            The Latch will be returned based on the Policy. The Latch can
      *            then be used to await until the count down has reached to 0 or
      *            the specified time has elapsed.
-     * 
+     *
      * @return EVCacheLatch which will encompasses the Operation. You can block
      *         on the Operation based on the policy to ensure the required
      *         criteria is met. The Latch can also be queried to get details on
      *         status of the operations
-     * 
+     *
      * @throws EVCacheException
      *             in the rare circumstance where queue is too full to accept
      *             any more requests or any IO Related issues
@@ -905,12 +958,13 @@ public interface EVCache {
 
     /**
      * Append the given value to the existing value in EVCache. If the Key does not exist the the key will added.
-     *  
+     *
      *
      * @param key
      *            the key under which this object should be appended or Added. Ensure the
      *            key is properly encoded and does not contain whitespace or
-     *            control characters.
+     *            control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param T
      *            the value to be appended
      * @param tc
@@ -918,7 +972,7 @@ public interface EVCache {
      * @param timeToLive
      *            the expiration of this object i.e. less than 30 days in
      *            seconds or the exact expiry time as UNIX time
-     *            
+     *
      * @return Array of futures representing the processing of this operation
      *         across all the replicas
      * @throws EVCacheException
@@ -928,15 +982,16 @@ public interface EVCache {
      */
     <T> Future<Boolean>[] appendOrAdd(String key, T value, Transcoder<T> tc, int timeToLive) throws EVCacheException;
 
-    
+
     /**
      * Append the given value to the existing value in EVCache. If the Key does not exist the the key will added.
-     *  
+     *
      *
      * @param key
      *            the key under which this object should be appended or Added. Ensure the
      *            key is properly encoded and does not contain whitespace or
-     *            control characters.
+     *            control characters. The max length of the key (including prefix)
+     *            is 250 characters.
      * @param T
      *            the value to be appended
      * @param tc
@@ -944,7 +999,7 @@ public interface EVCache {
      * @param timeToLive
      *            the expiration of this object i.e. less than 30 days in
      *            seconds or the exact expiry time as UNIX time
-     *            
+     *
      * @param policy
      *            The Latch will be returned based on the Policy. The Latch can then be used to await until the count down has reached to 0 or the specified time has elapsed.
      *
@@ -952,7 +1007,7 @@ public interface EVCache {
      *         on the Operation based on the policy to ensure the required
      *         criteria is met. The Latch can also be queried to get details on
      *         status of the operations
-     * 
+     *
      * @throws EVCacheException
      *             in the circumstance where queue is too full to accept any
      *             more requests or issues Serializing the value or any IO
@@ -962,47 +1017,95 @@ public interface EVCache {
 
     /**
      * The {@code appName} that will be used by this {@code EVCache}.
-     * 
+     *
      * @param The
      *            name of the EVCache App cluster.
      * @return this {@code Builder} object
      */
     String getAppName();
-    
-    
+
+
     /**
      * The {@code cachePrefix} that will be used by this {@code EVCache}.
-     * 
+     *
      * @param The
      *            name of the EVCache App cluster.
      * @return this {@code Builder} object
      */
     String getCachePrefix();
-    
+
     /**
      * A Builder that builds an EVCache based on the specified App Name, cache
      * Name, TTl and Transcoder.
-     * 
+     *
      * @author smadappa
      */
     public class Builder {
-        private static final Logger log = LoggerFactory.getLogger(EVCacheImpl.class);
+        private static final Logger logger = LoggerFactory.getLogger(EVCacheImpl.class);
+
         private String _appName;
         private String _cachePrefix = null;
         private int _ttl = 900;
         private Transcoder<?> _transcoder = null;
         private boolean _serverGroupRetry = true;
         private boolean _enableExceptionThrowing = false;
+        private List<Customizer> _customizers = new ArrayList<>();
+        private BiFunction<String, String, Object> objectProvider = (fqpn, errorMessage) -> {
+            logger.warn(
+                "Unable to instantiate {}: No object provider set for `EVCache.Builder`. Use `EVCache.Builder.withObjectProvider()` to set the object provider.",
+                fqpn);
+
+            return null;
+        };
 
         @Inject
         private EVCacheClientPoolManager _poolManager;
 
+        /**
+         * Customizers allow post-processing of the Builder. This affords a way for libraries to
+         * perform customization.
+         */
+        @FunctionalInterface
+        public interface Customizer {
+            void customize(final String cacheName, final Builder builder);
+        }
+
+        public static class Factory {
+            public Builder createInstance(String appName) {
+                return Builder.forApp(appName);
+            }
+        }
+
+        public static Builder forApp(final String appName) {
+            return new Builder().setAppName(appName);
+        }
+
         public Builder() {
+        }
+
+        public Builder withObjectProvider(
+            final BiFunction<String, String, Object> objectProvider) {
+            this.objectProvider = objectProvider;
+
+            return this;
+        }
+
+        public Builder withConfigurationProperties(
+            final EVCacheClientPoolConfigurationProperties configurationProperties) {
+          return this
+              .setCachePrefix(configurationProperties.getKeyPrefix())
+              .setDefaultTTL(configurationProperties.getTimeToLive())
+              .setRetry(configurationProperties.getRetryEnabled())
+              .setExceptionThrowing(configurationProperties.getExceptionThrowingEnabled())
+              .setTranscoder((Transcoder<?>) objectProvider.apply(
+                  configurationProperties.getTranscoder(),
+                  "Unable to instantiate Transcoder `" + configurationProperties.getTranscoder()
+                      + "`."));
         }
 
         /**
          * The {@code appName} that will be used by this {@code EVCache}.
-         * 
+         *
          * @param The
          *            name of the EVCache App cluster.
          * @return this {@code Builder} object
@@ -1010,7 +1113,7 @@ public interface EVCache {
         public Builder setAppName(String appName) {
             if (appName == null) throw new IllegalArgumentException("param appName cannot be null.");
             this._appName = appName.toUpperCase(Locale.US);
-            if (!_appName.startsWith("EVCACHE")) log.warn("Make sure the app you are connecting to is EVCache App");
+            if (!_appName.startsWith("EVCACHE")) logger.warn("Make sure the app you are connecting to is EVCache App");
             return this;
         }
 
@@ -1034,7 +1137,7 @@ public interface EVCache {
         /**
          * @deprecated Please use {@link #setCachePrefix(String)}
          * @see #setCachePrefix(String)
-         * 
+         *
          *      Adds {@code cacheName} to the key. This ensures there are no
          *      cache collisions if the same EVCache app is used for across
          *      multiple use cases.
@@ -1051,14 +1154,34 @@ public interface EVCache {
          * seconds. You can override the value by passing the desired TTL with
          * {@link EVCache#set(String, Object, int)} operations.
          *
-         * @param ttl.
-         *            Default is 900 seconds.
+         * @param ttl. Default is 900 seconds.
          * @return this {@code Builder} object
          */
         public Builder setDefaultTTL(int ttl) {
             if (ttl < 0) throw new IllegalArgumentException("Time to Live cannot be less than 0.");
             this._ttl = ttl;
             return this;
+        }
+
+      /**
+       * The default Time To Live (TTL) for items in {@link EVCache} in
+       * seconds. You can override the value by passing the desired TTL with
+       * {@link EVCache#set(String, Object, int)} operations.
+       *
+       * @param ttl. Default is 900 seconds.
+       * @return this {@code Builder} object
+       */
+      public Builder setDefaultTTL(@Nullable final Duration ttl) {
+            if (ttl == null) {
+                return this;
+            }
+
+            return setDefaultTTL((int) ttl.getSeconds());
+        }
+
+        @VisibleForTesting
+        Transcoder<?> getTranscoder() {
+          return this._transcoder;
         }
 
         /**
@@ -1075,7 +1198,7 @@ public interface EVCache {
 
         /**
          * @deprecated Please use {@link #enableRetry()}
-         * 
+         *
          *             Will enable retries across Zone (Server Group).
          *
          * @return this {@code Builder} object
@@ -1085,12 +1208,29 @@ public interface EVCache {
             return this;
         }
 
+      /**
+       * Will enable or disable retry across Server Group for cache misses and exceptions
+       * if there are multiple Server Groups for the given EVCache App and
+       * data is replicated across them. This ensures the Hit Rate continues
+       * to be unaffected whenever a server group loses instances.
+       *
+       * By Default retry is enabled.
+       *
+       * @param enableRetry whether retries are to be enabled
+       * @return this {@code Builder} object
+       */
+      public Builder setRetry(boolean enableRetry) {
+            this._serverGroupRetry = enableRetry;
+
+            return this;
+        }
+
         /**
          * Will enable retry across Server Group for cache misses and exceptions
          * if there are multiple Server Groups for the given EVCache App and
          * data is replicated across them. This ensures the Hit Rate continues
          * to be unaffected whenever a server group loses instances.
-         * 
+         *
          * By Default retry is enabled.
          *
          * @return this {@code Builder} object
@@ -1113,13 +1253,27 @@ public interface EVCache {
 
         /**
          * @deprecated Please use {@link #disableRetry()}
-         * 
+         *
          *             Will disable retry across Zone (Server Group).
          *
          * @return this {@code Builder} object
          */
         public <T> Builder disableZoneFallback() {
             this._serverGroupRetry = false;
+            return this;
+        }
+
+      /**
+       * By Default exceptions are not propagated and null values are
+       * returned. By enabling exception propagation we return the
+       * {@link EVCacheException} whenever the operations experience them.
+       *
+       * @param enableExceptionThrowing whether exception throwing is to be enabled
+       * @return this {@code Builder} object
+       */
+      public Builder setExceptionThrowing(boolean enableExceptionThrowing) {
+            this._enableExceptionThrowing = enableExceptionThrowing;
+
             return this;
         }
 
@@ -1135,6 +1289,44 @@ public interface EVCache {
             return this;
         }
 
+      /**
+       * Adds customizers to be applied by {@code customize}.
+       *
+       * @param customizers List of {@code Customizer}s
+       * @return this {@code Builder} object
+       */
+        public Builder addCustomizers(@Nullable final List<Customizer> customizers) {
+            this._customizers.addAll(customizers);
+
+            return this;
+        }
+
+
+      /**
+       * Applies {@code Customizer}s added through {@code addCustomizers} to {@this}.
+       *
+       * @return this {@code Builder} object
+       */
+      public Builder customize() {
+        _customizers.forEach(customizer -> {
+          customizeWith(customizer);
+        });
+
+        return this;
+      }
+
+      /**
+       * Customizes {@this} with the {@code customizer}.
+       *
+       * @param customizer {@code Customizer} or {@code Consumer<String, Builder>} to be applied to {@code this}.
+       * @return this {@code Builder} object
+       */
+      public Builder customizeWith(final Customizer customizer) {
+            customizer.customize(this._appName, this);
+
+            return this;
+        }
+
         /**
          * Returns a newly created {@code EVCache} based on the contents of the
          * {@code Builder}.
@@ -1143,12 +1335,17 @@ public interface EVCache {
         public EVCache build() {
             if (_poolManager == null) {
                 _poolManager = EVCacheClientPoolManager.getInstance();
-                if (log.isDebugEnabled()) log.debug("_poolManager - " + _poolManager + " through getInstance");
+                if (logger.isDebugEnabled()) logger.debug("_poolManager - " + _poolManager + " through getInstance");
             }
-            if (_appName == null) throw new IllegalArgumentException("param appName cannot be null.");
-            final EVCacheImpl cache = new EVCacheImpl(_appName, _cachePrefix, _ttl, _transcoder, _serverGroupRetry,
-                    _enableExceptionThrowing, _poolManager);
-            return cache;
+
+            if (_appName == null) {
+                throw new IllegalArgumentException("param appName cannot be null.");
+            }
+
+            customize();
+
+            return new EVCacheImpl(
+                _appName, _cachePrefix, _ttl, _transcoder, _serverGroupRetry, _enableExceptionThrowing, _poolManager);
         }
     }
 }

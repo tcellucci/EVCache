@@ -20,6 +20,7 @@ import com.netflix.appinfo.DataCenterInfo;
 import com.netflix.appinfo.InstanceInfo;
 import com.netflix.appinfo.InstanceInfo.InstanceStatus;
 import com.netflix.config.ChainedDynamicProperty;
+import com.netflix.config.DynamicBooleanProperty;
 import com.netflix.config.DynamicStringSetProperty;
 import com.netflix.discovery.DiscoveryClient;
 import com.netflix.discovery.shared.Application;
@@ -29,6 +30,7 @@ import com.netflix.servo.tag.BasicTagList;
 
 public class DiscoveryNodeListProvider implements EVCacheNodeList {
     public static final String DEFAULT_PORT = "11211";
+    public static final String DEFAULT_SECURE_PORT = "11443";
 
     private static Logger log = LoggerFactory.getLogger(DiscoveryNodeListProvider.class);
     private final DiscoveryClient _discoveryClient;
@@ -37,13 +39,11 @@ public class DiscoveryNodeListProvider implements EVCacheNodeList {
     private final Map<String, ChainedDynamicProperty.BooleanProperty> useRendBatchPortMap = new HashMap<String, ChainedDynamicProperty.BooleanProperty>();
     private final DynamicStringSetProperty ignoreHosts;
 
-    public DiscoveryNodeListProvider(ApplicationInfoManager applicationInfoManager, DiscoveryClient discoveryClient,
-            String appName) {
+    public DiscoveryNodeListProvider(ApplicationInfoManager applicationInfoManager, DiscoveryClient discoveryClient, String appName) {
         this.applicationInfoManager = applicationInfoManager;
         this._discoveryClient = discoveryClient;
         this._appName = appName;
         ignoreHosts = new DynamicStringSetProperty(appName + ".ignore.hosts", "");
-
     }
 
     /*
@@ -52,7 +52,7 @@ public class DiscoveryNodeListProvider implements EVCacheNodeList {
      * @see com.netflix.evcache.pool.EVCacheNodeList#discoverInstances()
      */
     @Override
-    public Map<ServerGroup, EVCacheServerGroupConfig> discoverInstances() throws IOException {
+    public Map<ServerGroup, EVCacheServerGroupConfig> discoverInstances(String appName) throws IOException {
 
         if ((applicationInfoManager.getInfo().getStatus() == InstanceStatus.DOWN)) {
             return Collections.<ServerGroup, EVCacheServerGroupConfig> emptyMap();
@@ -94,6 +94,12 @@ public class DiscoveryNodeListProvider implements EVCacheNodeList {
                 continue;
             }
 
+            final DynamicBooleanProperty asgEnabled = EVCacheConfig.getInstance().getDynamicBooleanProperty(asgName + ".enabled", true);
+            if (!asgEnabled.get()) {
+                if(log.isDebugEnabled()) log.debug("ASG " + asgName + " is disabled so ignoring it");
+                continue;
+            }
+
             final Map<String, String> metaInfo = iInfo.getMetadata();
             final int evcachePort = Integer.parseInt((metaInfo != null && metaInfo.containsKey("evcache.port")) ? metaInfo.get("evcache.port") : DEFAULT_PORT);
             final int rendPort = (metaInfo != null && metaInfo.containsKey("rend.port")) ? Integer.parseInt(metaInfo.get("rend.port")) : 0;
@@ -106,7 +112,11 @@ public class DiscoveryNodeListProvider implements EVCacheNodeList {
                 useBatchPort = EVCacheConfig.getInstance().getChainedBooleanProperty(_appName + ".use.batch.port", "evcache.use.batch.port", Boolean.FALSE, null);
                 useRendBatchPortMap.put(asgName, useBatchPort);
             }
-            final int port = rendPort == 0 ? evcachePort : ((useBatchPort.get().booleanValue()) ? rendBatchPort : rendPort);
+            int port = rendPort == 0 ? evcachePort : ((useBatchPort.get().booleanValue()) ? rendBatchPort : rendPort);
+            final ChainedDynamicProperty.BooleanProperty isSecure = EVCacheConfig.getInstance().getChainedBooleanProperty(asgName + ".use.secure", _appName + ".use.secure", false, null);
+            if(isSecure.get()) {
+                port = Integer.parseInt((metaInfo != null && metaInfo.containsKey("evcache.secure.port")) ? metaInfo.get("evcache.secure.port") : DEFAULT_SECURE_PORT);
+            }
 
             final ServerGroup serverGroup = new ServerGroup(zone, asgName);
             final Set<InetSocketAddress> instances;

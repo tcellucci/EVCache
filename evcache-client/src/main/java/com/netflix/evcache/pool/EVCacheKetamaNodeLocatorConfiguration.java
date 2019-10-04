@@ -62,8 +62,9 @@ public class EVCacheKetamaNodeLocatorConfiguration extends DefaultKetamaNodeLoca
 	                        final String hostName = info.getHostName();
 	                        if(hostName.equalsIgnoreCase(isa.getHostName())) {
 	                            final String ip = info.getIPAddr();
-	                            final String port = info.getMetadata().get("evcache.port");
-	                            result = hostName + '/' + ip + ':' + ((port != null) ? port : "11211");
+	                            String port = info.getMetadata().get("evcache.port");
+	                            if(port == null) port = "11211";
+	                            result = hostName + '/' + ip + ':' + port;
 	                            break;
 	                        }
 	                    }
@@ -71,7 +72,7 @@ public class EVCacheKetamaNodeLocatorConfiguration extends DefaultKetamaNodeLoca
                     	result = ((InetSocketAddress)socketAddress).getHostName() + '/' + ((InetSocketAddress)socketAddress).getAddress().getHostAddress() + ":11211";
                     }
                 } else {
-                    result = ((InetSocketAddress)socketAddress).getHostName() + '/' + ((InetSocketAddress)socketAddress).getAddress().getHostAddress() + ":11211";
+                    result = ((InetSocketAddress)socketAddress).getHostName() + '/' + ((InetSocketAddress)socketAddress).getAddress().getHostAddress()  + ":11211";
                 }
             } else {
                 result=String.valueOf(socketAddress);

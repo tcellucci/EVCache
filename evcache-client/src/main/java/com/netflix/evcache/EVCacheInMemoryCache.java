@@ -32,7 +32,6 @@ import com.netflix.servo.annotations.DataSourceType;
 import com.netflix.servo.monitor.Monitor;
 import com.netflix.servo.monitor.MonitorConfig;
 import com.netflix.servo.monitor.MonitorConfig.Builder;
-import com.netflix.servo.monitor.StepCounter;
 import com.netflix.servo.tag.Tag;
 
 import net.spy.memcached.transcoders.Transcoder;
@@ -52,7 +51,7 @@ public class EVCacheInMemoryCache<T> {
     private final DynamicIntProperty _poolSize; // This many threads will be initialized to fetch data from evcache async
     private final String appName;
 
-    private LoadingCache<String, T> cache;
+    private LoadingCache<EVCacheKey, T> cache;
     private ExecutorService pool = null;
 
     private final Transcoder<T> tc;
@@ -133,9 +132,9 @@ public class EVCacheInMemoryCache<T> {
                 builder = builder.refreshAfterWrite(_refreshDuration.get(), TimeUnit.MILLISECONDS);
             }
             initRefreshPool();
-            final LoadingCache<String, T> newCache = builder.build(
-                    new CacheLoader<String, T>() {
-                        public T load(String key) throws EVCacheException { 
+            final LoadingCache<EVCacheKey, T> newCache = builder.build(
+                    new CacheLoader<EVCacheKey, T>() {
+                        public T load(EVCacheKey key) throws EVCacheException { 
                             try {
                                 final T t = impl.doGet(key, tc);
                                 if(t == null) throw new  DataNotFoundException("Data for key : " + key + " could not be loaded as it was not found in EVCache");
@@ -151,7 +150,7 @@ public class EVCacheInMemoryCache<T> {
                             }
                         }
 
-                        public ListenableFuture<T> reload(final String key, T prev) {
+                        public ListenableFuture<T> reload(final EVCacheKey key, T prev) {
                             ListenableFutureTask<T> task = ListenableFutureTask.create(new Callable<T>() {
                                 public T call() {
                                     try {
@@ -175,7 +174,7 @@ public class EVCacheInMemoryCache<T> {
                         }
                     });
             if(cache != null) newCache.putAll(cache.asMap());
-            final Cache<String, T> currentCache = this.cache;
+            final Cache<EVCacheKey, T> currentCache = this.cache;
             this.cache = newCache;
             if(currentCache != null) {
                 currentCache.invalidateAll();
@@ -186,7 +185,7 @@ public class EVCacheInMemoryCache<T> {
         }
     }
 
-    private LoadingCache<String, T> getCache() {
+    private LoadingCache<EVCacheKey, T> getCache() {
         return cache;
     }
 
@@ -195,11 +194,16 @@ public class EVCacheInMemoryCache<T> {
     }
 
     private void setupMonitoring(final String appName) {
-        final StepCounter sizeCounter = new StepCounter(getMonitorConfig(appName, "size", DataSourceType.GAUGE)) {
+        register(new Monitor<Number>() {
+            final MonitorConfig config;
+
+            {
+                config = getMonitorConfig(appName, "size", DataSourceType.COUNTER);
+            }
+
             @Override
             public Number getValue() {
                 if (getCache() == null) return Long.valueOf(0);
-                log.debug("Current size is : {}", getCache().size());
                 return Long.valueOf(getCache().size());
             }
 
@@ -207,8 +211,12 @@ public class EVCacheInMemoryCache<T> {
             public Number getValue(int pollerIndex) {
                 return getValue();
             }
-        };
-        register(sizeCounter);
+
+            @Override
+            public MonitorConfig getConfig() {
+                return config;
+            }
+        });
 
         register(new Monitor<Number>() {
             final MonitorConfig config;
@@ -234,19 +242,29 @@ public class EVCacheInMemoryCache<T> {
             }
         });
 
-        final StepCounter hitrateCounter = new StepCounter(getMonitorConfig(appName, "hitrate", DataSourceType.GAUGE)) {
+        register(new Monitor<Number>() {
+            final MonitorConfig config;
+
+            {
+                config = getMonitorConfig(appName, "hitrate", DataSourceType.GAUGE);
+            }
+
             @Override
             public Number getValue() {
                 if (getCache() == null) return Long.valueOf(0);
-                return Double.valueOf(getStats().hitRate());
+                return Double.valueOf(getStats().hitRate() * 100);
             }
 
             @Override
             public Number getValue(int pollerIndex) {
                 return getValue();
             }
-        };
-        register(hitrateCounter);
+
+            @Override
+            public MonitorConfig getConfig() {
+                return config;
+            }
+        });
 
         register(new Monitor<Number>() {
             final MonitorConfig config;
@@ -416,21 +434,37 @@ public class EVCacheInMemoryCache<T> {
             }
         });        
 
-        final StepCounter loadExceptionRate = new StepCounter(getMonitorConfig(appName, "loadExceptionRate", DataSourceType.GAUGE)) {
+        register(new Monitor<Number>() {
+            final MonitorConfig config;
+
+            {
+                config = getMonitorConfig(appName, "loadExceptionRate", DataSourceType.GAUGE);
+            }
+
             @Override
             public Number getValue() {
                 if (getCache() == null) return Long.valueOf(0);
-                return Double.valueOf(getStats().loadExceptionRate());
+                return Double.valueOf(getStats().loadExceptionRate() * 100);
             }
 
             @Override
             public Number getValue(int pollerIndex) {
                 return getValue();
             }
-        };
-        register(loadExceptionRate);
 
-        final StepCounter averageLoadTime = new StepCounter(getMonitorConfig(appName, "averageLoadTime-ms", DataSourceType.GAUGE)) {
+            @Override
+            public MonitorConfig getConfig() {
+                return config;
+            }
+        });
+
+        register(new Monitor<Number>() {
+            final MonitorConfig config;
+
+            {
+                config = getMonitorConfig(appName, "averageLoadTime-ms", DataSourceType.GAUGE);
+            }
+
             @Override
             public Number getValue() {
                 if (getCache() == null) return Long.valueOf(0);
@@ -441,18 +475,22 @@ public class EVCacheInMemoryCache<T> {
             public Number getValue(int pollerIndex) {
                 return getValue();
             }
-        };
-        register(averageLoadTime);
+
+            @Override
+            public MonitorConfig getConfig() {
+                return config;
+            }
+        });
     }
 
-    public T get(String key) throws ExecutionException {
+    public T get(EVCacheKey key) throws ExecutionException {
         if (cache == null) return null;
         final T val = cache.get(key);
         if (log.isDebugEnabled()) log.debug("GET : appName : " + appName + "; Key : " + key + "; val : " + val);
         return val;
     }
 
-    public void put(String key, T value) {
+    public void put(EVCacheKey key, T value) {
         if (cache == null) return;
         cache.put(key, value);
         if (log.isDebugEnabled()) log.debug("PUT : appName : " + appName + "; Key : " + key + "; val : " + value);
@@ -464,8 +502,8 @@ public class EVCacheInMemoryCache<T> {
         if (log.isDebugEnabled()) log.debug("DEL : appName : " + appName + "; Key : " + key);
     }
 
-    public Map<String, T> getAll() {
-        if (cache == null) return Collections.<String, T>emptyMap();
+    public Map<EVCacheKey, T> getAll() {
+        if (cache == null) return Collections.<EVCacheKey, T>emptyMap();
         return cache.asMap();
     }
 

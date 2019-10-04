@@ -96,6 +96,7 @@ public class BaseConnectionFactory extends BinaryConnectionFactory {
                 createWriteOperationQueue(), createOperationQueue(),
                 opMaxBlockTime, doAuth, getOperationTimeout(), getAuthWaitTime(), this, appName, id, serverGroup,
                 startTime);
+        node.registerMonitors();
         return node;
     }
 
@@ -155,8 +156,16 @@ public class BaseConnectionFactory extends BinaryConnectionFactory {
         return this.serverGroup.getZone();
     }
 
+    public String getServerGroupName() {
+        return this.serverGroup.getName();
+    }
+
     public String getReplicaSetName() {
         return this.serverGroup.getName();
+    }
+
+    public String getAppName() {
+        return this.appName;
     }
 
     public String toString() {

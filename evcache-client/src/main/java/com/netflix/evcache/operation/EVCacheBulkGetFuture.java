@@ -22,6 +22,7 @@ import net.spy.memcached.MemcachedConnection;
 import net.spy.memcached.internal.BulkGetFuture;
 import net.spy.memcached.ops.Operation;
 import net.spy.memcached.ops.OperationState;
+import net.spy.memcached.protocol.binary.EVCacheNodeImpl;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,6 +31,9 @@ import com.netflix.evcache.metrics.EVCacheMetricsFactory;
 import com.netflix.evcache.pool.ServerGroup;
 import com.netflix.servo.annotations.DataSourceType;
 import com.netflix.servo.monitor.Stopwatch;
+import com.netflix.servo.tag.BasicTagList;
+import com.netflix.servo.tag.TagList;
+
 import rx.Scheduler;
 import rx.Single;
 
@@ -77,7 +81,7 @@ public class EVCacheBulkGetFuture<T> extends BulkGetFuture<T> {
                 if (gcMXBean instanceof com.sun.management.GarbageCollectorMXBean) {
                     final GcInfo lastGcInfo = ((com.sun.management.GarbageCollectorMXBean) gcMXBean).getLastGcInfo();
 
-                    // If no GCs, there was no pause.
+                    // If no GCs, there was no pause due to GC.
                     if (lastGcInfo == null) {
                         continue;
                     }
@@ -86,29 +90,18 @@ public class EVCacheBulkGetFuture<T> extends BulkGetFuture<T> {
                     if (gcStartTime > startTime) {
                         gcPause = true;
                         final long gcDuration = lastGcInfo.getDuration();
-                        EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-DelayDueToGCPause", DataSourceType.COUNTER).increment(gcDuration);
-                        if (log.isDebugEnabled()) log.debug("Total duration due to gc event = " + gcDuration
-                                + " msec.");
+                        if (log.isDebugEnabled()) log.debug("Total duration due to gc event = " + gcDuration + " msec.");
                         break;
                     }
                 }
             }
-            if (!gcPause) {
-                long gcDuration = System.currentTimeMillis() - startTime;
-                EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-DelayProbablyDueToGCPause", DataSourceType.COUNTER).increment(gcDuration);
-            }
             // redo the same op once more since there was a chance of gc pause
-            if (gcPause) {
-                status = latch.await(to, unit);
-                if (log.isDebugEnabled()) log.debug("Retry status : " + status);
-                if (status) {
-                    EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-DelayDueToGCPause-Success", DataSourceType.COUNTER).increment();
-                } else {
-                    EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-DelayDueToGCPause-Fail", DataSourceType.COUNTER).increment();
-                }
-            }
-            if (log.isDebugEnabled()) log.debug("Total duration due to gc event = " + (System.currentTimeMillis()
-                    - startTime) + " msec.");
+            status = latch.await(to, unit);
+            if (log.isDebugEnabled()) log.debug("Retry status : " + status);
+            if (log.isDebugEnabled()) log.debug("Total duration due to gc event = " + (System.currentTimeMillis() - startTime) + " msec.");
+
+            final long pauseDuration = System.currentTimeMillis() - startTime;
+            EVCacheMetricsFactory.getStatsTimer(appName, serverGroup, "Pause-bulk", gcPause ? "GC":"Scheduling", status ? "Succcess":"Fail").record(pauseDuration);
         }
 
         for (Operation op : ops) {
@@ -116,6 +109,15 @@ public class EVCacheBulkGetFuture<T> extends BulkGetFuture<T> {
                 if (!status) {
                     MemcachedConnection.opTimedOut(op);
                     timedoutOps.add(op);
+                    if (!hasZF) {
+	                    TagList tags = null;
+	                    if(op.getHandlingNode() instanceof EVCacheNodeImpl) {
+	                    	tags = ((EVCacheNodeImpl)op.getHandlingNode()).getBaseTags();
+	                    } else {
+	                    	tags = BasicTagList.of(DataSourceType.COUNTER);
+	                    }
+	                    EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-getSome-CheckedOperationTimeout", tags).increment();
+                    }
                 } else {
                     MemcachedConnection.opSucceeded(op);
                 }
@@ -124,14 +126,23 @@ public class EVCacheBulkGetFuture<T> extends BulkGetFuture<T> {
             }
         }
 
-        if (!status && !hasZF && timedoutOps.size() > 0) EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-getSome-CheckedOperationTimeout", DataSourceType.COUNTER).increment();
+//        if (!status && !hasZF && timedoutOps.size() > 0) EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-getSome-CheckedOperationTimeout", DataSourceType.COUNTER).increment();
 
         for (Operation op : ops) {
             if(op.isCancelled()) {
-                if (hasZF) EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-getSome-Cancelled", DataSourceType.COUNTER).increment();
+                TagList tags = null;
+                if(op.getHandlingNode() instanceof EVCacheNodeImpl) {
+                	tags = ((EVCacheNodeImpl)op.getHandlingNode()).getBaseTags();
+                } else {
+                	tags = BasicTagList.of(DataSourceType.COUNTER);
+                }
+                if (!hasZF) EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-getSome-Cancelled", tags).increment();
                 if (throwException) throw new ExecutionException(new CancellationException("Cancelled"));
             }
-            if (op.hasErrored() && throwException) throw new ExecutionException(op.getException());
+            if (op.hasErrored() && throwException) {
+                if (!hasZF) EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-getSome-Error", DataSourceType.COUNTER).increment();
+                throw new ExecutionException(op.getException());
+            }
         }
         Map<String, T> m = new HashMap<String, T>();
         for (Map.Entry<String, Future<T>> me : rvMap.entrySet()) {
@@ -162,16 +173,37 @@ public class EVCacheBulkGetFuture<T> extends BulkGetFuture<T> {
                     if (op.getState() != OperationState.COMPLETE) {
                         MemcachedConnection.opTimedOut(op);
                         timedoutOps.add(op);
+                        if (!hasZF) {
+	                        TagList tags = null;
+	                        if(op.getHandlingNode() instanceof EVCacheNodeImpl) {
+	                        	tags = ((EVCacheNodeImpl)op.getHandlingNode()).getBaseTags();
+	                        } else {
+	                        	tags = BasicTagList.of(DataSourceType.COUNTER);
+	                        }
+	                        EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-getSome-CheckedOperationTimeout", tags).increment();                        
+                        }
                     } else {
                         MemcachedConnection.opSucceeded(op);
                     }
                 }
 
-                if (!hasZF && timedoutOps.size() > 0) EVCacheMetricsFactory.increment(appName + "-getSome-CheckedOperationTimeout");
+//                if (!hasZF && timedoutOps.size() > 0) EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-getSome-CheckedOperationTimeout", DataSourceType.COUNTER).increment();
 
                 for (Operation op : ops) {
-                    if (op.isCancelled() && throwException) throw new ExecutionException(new CancellationException("Cancelled"));
-                    if (op.hasErrored() && throwException) throw new ExecutionException(op.getException());
+                    if (op.isCancelled() && throwException) {
+                        TagList tags = null;
+                        if(op.getHandlingNode() instanceof EVCacheNodeImpl) {
+                        	tags = ((EVCacheNodeImpl)op.getHandlingNode()).getBaseTags();
+                        } else {
+                        	tags = BasicTagList.of(DataSourceType.COUNTER);
+                        }
+                        EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-getSome-Cancelled", tags).increment();
+                        throw new ExecutionException(new CancellationException("Cancelled"));
+                    }
+                    if (op.hasErrored() && throwException) {
+                        EVCacheMetricsFactory.getCounter(appName, null, serverGroup.getName(), appName + "-getSome-Error", DataSourceType.COUNTER).increment();
+                        throw new ExecutionException(op.getException());
+                    }
                 }
                 Map<String, T> m = new HashMap<String, T>();
                 for (Map.Entry<String, Future<T>> me : rvMap.entrySet()) {
